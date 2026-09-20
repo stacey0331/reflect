@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Journal · reflect</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body data-page="journal">
+  <div class="shell">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main">
+      <div class="content">
+        <section aria-labelledby="date-day">
+          <!-- Date / time indicator. Filled in and refreshed by app.js -->
+          <div class="date-block">
+            <h1 id="date-day">Today</h1>
+            <span class="time-pill" id="date-time"></span>
+          </div>
+
+          <div class="pixel-box composer">
+            <label class="sr-only" for="entry-text">Journal entry</label>
+            <textarea id="entry-text" placeholder="What happened today?"></textarea>
+            <div class="composer-footer">
+              <span class="count" id="word-count">0 words</span>
+              <span class="status" id="save-status" role="status" aria-live="polite"></span>
+              <!-- Save entry -> POST /api/journal (wired in app.js via api.createEntry) -->
+              <button class="btn btn-primary" id="save-btn" type="button">
+                <span class="heart" aria-hidden="true"></span>Save entry
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="recent" aria-labelledby="recent-heading">
+          <div class="recent-head">
+            <h2 id="recent-heading">Recent entries</h2>
+          </div>
+          <!-- Filled by app.js from GET /api/journal -->
+          <ul class="entry-list" id="entry-list"></ul>
+          <div class="more-row" id="more-row" hidden>
+            <button class="btn" id="more-btn" type="button"></button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

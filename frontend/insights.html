@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Insights · reflect</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body data-page="insights">
+  <div class="shell">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main">
+      <div class="content wide">
+        <div class="page-title">
+          <h1>Insights</h1>
+        </div>
+        <p class="lede">A look at how your week went, based on what you wrote.</p>
+
+        <!--
+          PLACEHOLDER DASHBOARD.
+          Every number and sentence here is mock data from js/mock-data.js.
+          Later it will come from the FastAPI backend (LLM extraction + aggregation).
+        -->
+        <div class="insights-grid">
+          <section class="pixel-box card span-2" aria-labelledby="reflection-heading">
+            <h2 id="reflection-heading">Weekly reflection</h2>
+            <p class="card-sub" id="week-label"></p>
+            <p class="reflection-text" id="weekly-reflection"></p>
+          </section>
+
+          <section class="pixel-box card" aria-labelledby="time-heading">
+            <h2 id="time-heading">Time allocation</h2>
+            <p class="card-sub">Where your hours went this week</p>
+            <div class="bars" id="time-bars"></div>
+          </section>
+
+          <section class="pixel-box card" aria-labelledby="themes-heading">
+            <h2 id="themes-heading">Recurring themes</h2>
+            <p class="card-sub">Bigger means it came up more often</p>
+            <div class="theme-cloud" id="theme-cloud"></div>
+          </section>
+
+          <section class="pixel-box card" aria-labelledby="concerns-heading">
+            <h2 id="concerns-heading">Recent concerns</h2>
+            <p class="card-sub">Things that seem to be on your mind</p>
+            <ul class="soft-list" id="concerns"></ul>
+          </section>
+
+          <section class="pixel-box card" aria-labelledby="patterns-heading">
+            <h2 id="patterns-heading">Patterns</h2>
+            <p class="card-sub">Connections you might not have noticed</p>
+            <ul class="soft-list" id="patterns"></ul>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
