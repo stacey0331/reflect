@@ -159,15 +159,18 @@ function initJournalPage() {
     saveBtn.disabled = true;
     showStatus("Saving entry…");
     try {
-      await api.createEntry({ content });
+      const newEntry = await api.createEntry({ content });
       textarea.value = "";
+      allEntries = [newEntry, ...allEntries];
+      showAll = false;
+      renderList();
       showStatus("Entry saved");
-      await loadEntries();
     } catch (error) {
       console.error(error);
       showStatus("Couldn't save the entry. Check that the backend is running, then try again.", true);
     } finally {
       updateComposer();
+      saveBtn.disabled = false;
     }
   });
 
@@ -178,7 +181,7 @@ function initJournalPage() {
       // and lets you expand to the full list, so there's no separate History page.
       // TODO(backend): if the list gets long, add pagination (e.g. ?limit= and
       // ?offset=) to GET /api/journal instead of fetching everything.
-      allEntries = await api.listEntries();
+      allEntries = (await api.listEntries()).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       renderList();
     } catch (error) {
       console.error(error);

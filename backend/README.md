@@ -36,3 +36,44 @@ Assumptions worth knowing:
    (for example `http://localhost:5500`), **or** serve `../frontend` from FastAPI
    with `StaticFiles` and change `API_BASE` in `frontend/js/api.js` to `/api`.
 3. In `frontend/js/api.js`, set `USE_MOCK = false`.
+
+## Setup
+```bash
+pip install -r requirements.txt
+
+python3 -m backend.database
+
+python3 -m uvicorn backend.api:app --reload
+```
+
+## Local PostgreSQL
+
+Reflect uses PostgreSQL for local development. PostgreSQL runs in Docker.
+NOTE: update this section when moving FastAPI to Docker. 
+
+### Start the database
+
+From the project root:
+
+```bash
+docker compose up -d
+```
+
+### Check database status
+
+```bash
+docker compose ps
+```
+
+### Stop the database
+
+```bash
+docker compose down
+```
+
+## Open a PostgreSQL shell inside the Docker database container
+```bash
+docker compose exec db psql -U user -d mydatabase
+```
+
+Database data is persisted in the Docker volume `db-data`, so stopping the container does not delete the database.

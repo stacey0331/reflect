@@ -1,95 +1,117 @@
-# reflect: a personal journal and reflection app
+# Reflect
 
-## What this is
+Reflect is a lightweight journaling app for capturing daily notes and turning them into reflection over time. The app is intentionally simple and calm: write, save, browse recent entries, and revisit them later for editing or deletion.
 
-A journal you write in plain language. Over time it will store your entries,
-pull structure out of them with an LLM, and show you patterns: where your time
-goes, what keeps coming up, what's been bothering you, and a weekly reflection.
+## What is built now
 
-**Right now this repo contains only the frontend and project boilerplate.** The
-backend, database, and AI parts are deliberately left for you to build.
+This repo currently includes:
 
-The look is calm and Claude-like (sidebar, plain composer) with pixel y2k
-details (one pixel font throughout, pixel hearts and sparkles, notched pixel
-corners, segmented bars). Mostly white, baby blue and lavender, with a little pink.
+- a static journaling frontend in [frontend](frontend)
+- a FastAPI backend in [backend](backend)
+- a PostgreSQL database configured with Docker in [compose.yaml](compose.yaml)
+- SQLAlchemy models and a simple journal API
+- a mock analytics/insights experience for the placeholder dashboard
 
-It's plain HTML, CSS, and JavaScript with no framework, no build step, and no
-dependencies. The font (Pixelify Sans, SIL Open Font License)
-is bundled in `frontend/fonts/`, so the app makes no external requests.
+The app is not yet a full AI reflection system, but the journal CRUD flow is in place and the frontend is wired to the backend API.
 
-## Project structure
+## Tech stack
 
-```
-.
-├── frontend/
-│   ├── index.html        Journal: write an entry, see recent entries
-│   ├── journal.html      A single entry (journal.html?id=3): read, edit, delete
-│   ├── insights.html     Placeholder analytics dashboard (mock data)
-│   ├── settings.html     Placeholder page
-│   ├── css/
-│   │   └── styles.css    All styling, with design tokens at the top
-│   ├── fonts/            Bundled web fonts + their licenses
-│   └── js/
-│       ├── app.js        Page behavior + shared sidebar (builds DOM with textContent)
-│       ├── api.js        The ONLY file that talks to the backend
-│       └── mock-data.js  TEMPORARY mock entries + fake insights (delete later)
-├── backend/
-│   └── README.md         Notes for the API you'll build
-├── README.md
-└── .gitignore
+- Frontend: plain HTML, CSS, JavaScript
+- Backend: FastAPI
+- Database: PostgreSQL
+- ORM: SQLAlchemy
+- Local dev DB: Docker Compose
+
+## Local setup
+
+### 1) Install Python dependencies
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-There is no separate History page. The Journal page shows your latest 5 entries
-with a "Show all entries" button that expands to the full list, using the same
-`GET /api/journal` call.
+### 2) Start PostgreSQL
 
-## Run the frontend locally
+```bash
+docker compose up -d
+```
 
-The pages use ES modules, which browsers won't load from `file://`, so serve
-the folder over HTTP:
+### 3) Run the backend
+
+From the project root:
+
+```bash
+source .venv/bin/activate
+uvicorn backend.api:app --reload
+```
+
+The API will be available at:
+
+- http://localhost:8000/api/journal
+
+### 4) Run the frontend
 
 ```bash
 cd frontend
 python3 -m http.server 5500
 ```
 
-Then open <http://localhost:5500>.
+Then open:
 
-## What is mocked
+- http://localhost:5500
 
-- **Journal entries.** While `USE_MOCK = true` in `frontend/js/api.js`, entries
-  come from `frontend/js/mock-data.js` and are saved to your browser's
-  `localStorage`, so save, edit, and delete work and survive a refresh. To reset
-  the demo, clear that site's local storage. A "Demo mode" note in the sidebar
-  reminds you while this is on.
-- **Insights.** Every number and sentence on the Insights page is made-up data
-  (`MOCK_INSIGHTS` in `mock-data.js`). The page is marked "Sample data only".
-  It stays mocked even after you flip `USE_MOCK`, until you build an insights
-  endpoint.
-- **Settings.** A static placeholder page with no logic.
+## API contract
 
-## API endpoints the frontend expects
+The frontend expects these endpoints:
 
-```
-GET    /api/journal          list entries, newest first
-POST   /api/journal          body: { "content": "…" }, returns the created entry
-GET    /api/journal/{id}     one entry
-PUT    /api/journal/{id}     body: { "content": "…" }, returns the updated entry
-DELETE /api/journal/{id}     204 No Content
+```text
+GET    /api/journal
+POST   /api/journal
+GET    /api/journal/{id}
+PUT    /api/journal/{id}
+DELETE /api/journal/{id}
 ```
 
-Assumed entry shape: `{ id, created_at, content, updated_at? }`. See
-`backend/README.md` for details and how to connect. Look for `TODO(backend)`
-comments in `js/api.js` and `js/app.js`.
+### Example payloads
 
-## Left for you to implement
+Create an entry:
 
-- The FastAPI app and the five endpoints above
-- The PostgreSQL schema, models, and queries
-- Authentication (nothing is built, and there is no login screen)
-- LLM extraction of activities, themes, and concerns from entries
-- Analytics, weekly reflections, and "ask questions about my entries"
-  (including any embeddings or RAG)
-- A real `/api/insights` endpoint (the Insights page shape is in `mock-data.js`)
-- Pagination on `GET /api/journal` once the list gets long
-- Docker setup and GCP deployment
+```json
+{
+  "date": "2026-09-25",
+  "content": "Today I felt more focused after morning planning."
+}
+```
+
+Update an entry:
+
+```json
+{
+  "date": "2026-09-25",
+  "content": "Updated reflection: I felt more focused after morning planning."
+}
+```
+
+The journal list is sorted newest-first by `created_at`.
+
+## Current status
+
+This app currently supports:
+
+- writing new entries
+- listing recent entries in descending order
+- opening a single entry
+- editing an entry
+- deleting an entry
+
+The insights page is still mocked, and the AI/reflection features are still future work.
+
+## Next ideas
+
+- real AI-powered theme extraction and weekly reflection
+- better journal search and filtering
+- user auth
+- deeper insights dashboard and analytics endpoints
+- deployment setup and production config

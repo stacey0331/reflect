@@ -21,7 +21,7 @@ import { mockApi, MOCK_INSIGHTS } from "./mock-data.js";
 // TODO(backend): flip this to false once your FastAPI server is running.
 // While true, nothing is sent over the network and data comes from mock-data.js.
 // -----------------------------------------------------------------------------
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
 // -----------------------------------------------------------------------------
 // TODO(backend): where your FastAPI app lives.
@@ -61,23 +61,39 @@ export function getEntry(id) {
 
 /**
  * POST /api/journal
- * Sends only { content }. The frontend assumes your backend sets the id and
- * created_at timestamp.
+ * Backend expects { date, content } where date is an ISO date string like
+ * "2026-09-25".
  */
 export function createEntry({ content }) {
   if (USE_MOCK) return mockApi.create({ content });
+
+  const now = new Date();
+  const date = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+
   return request("/journal", {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ date, content }),
   });
 }
 
 /** PUT /api/journal/{id} */
 export function updateEntry(id, { content }) {
   if (USE_MOCK) return mockApi.update(id, { content });
+
+  const now = new Date();
+  const date = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+
   return request(`/journal/${encodeURIComponent(id)}`, {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ date, content }),
   });
 }
 
