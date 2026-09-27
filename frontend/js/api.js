@@ -18,7 +18,7 @@
 import { mockApi, MOCK_INSIGHTS } from "./mock-data.js";
 
 // -----------------------------------------------------------------------------
-// TODO(backend): flip this to false once your FastAPI server is running.
+// flip this to false once your FastAPI server is running.
 // While true, nothing is sent over the network and data comes from mock-data.js.
 // -----------------------------------------------------------------------------
 export const USE_MOCK = false;
@@ -114,5 +114,6 @@ export function deleteEntry(id) {
  */
 export async function getInsights() {
   // TODO(backend): return request("/insights");
-  return MOCK_INSIGHTS;
+  if (USE_MOCK) return MOCK_INSIGHTS;
+  return request("/insight");
 }

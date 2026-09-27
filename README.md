@@ -35,21 +35,32 @@ pip install -r requirements.txt
 ### 2) Start PostgreSQL
 
 ```bash
-docker compose up -d
+docker compose up -d # bring it back without destroying the data
+docker compose exec db psql -U user -d mydatabase
 ```
 
-### 3) Run the backend
+### 3) Configure the Gemini API key
 
-From the project root:
+Create or edit the local env file:
+
+```bash
+# backend/.env.local
+export GEMINI_API_KEY="your-real-api-key"
+```
+
+Then load it before starting the backend:
 
 ```bash
 source .venv/bin/activate
+source backend/.env.local
 uvicorn backend.api:app --reload
 ```
 
 The API will be available at:
 
 - http://localhost:8000/api/journal
+
+> Do not commit the real key to Git. Keep the local env file untracked.
 
 ### 4) Run the frontend
 

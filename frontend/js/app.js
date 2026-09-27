@@ -361,14 +361,18 @@ async function initEntryPage() {
 async function initInsightsPage() {
   const insights = await api.getInsights();
 
-  document.getElementById("week-label").textContent = insights.weekLabel;
+  const weekLabelEl = document.getElementById("week-label");
+  const labelText = insights.dateRange
+    ? `${insights.weekLabel} · ${insights.dateRange}`
+    : insights.weekLabel;
+  weekLabelEl.textContent = labelText;
   document.getElementById("weekly-reflection").textContent = insights.weeklyReflection;
 
   // Time allocation: 20-block pixel bars, scaled to the biggest category
   const SEGMENTS = 20;
   const barsEl = document.getElementById("time-bars");
-  const maxHours = Math.max(...insights.timeAllocation.map((t) => t.hours));
-  for (const item of insights.timeAllocation) {
+  const maxHours = Math.max(...(insights.timeAllocation || []).map((t) => t.hours));
+  for (const item of insights.timeAllocation || []) {
     const filled = Math.max(1, Math.round((item.hours / maxHours) * SEGMENTS));
     const segments = h("div", { class: "segments", "aria-hidden": "true" });
     for (let i = 0; i < SEGMENTS; i++) {
@@ -387,9 +391,10 @@ async function initInsightsPage() {
 
   // Recurring themes: bigger text for themes that appear more often
   const cloudEl = document.getElementById("theme-cloud");
-  const maxCount = Math.max(...insights.themes.map((t) => t.count));
+  const themes = insights.themes || [];
+  const maxCount = themes.length ? Math.max(...themes.map((t) => t.count)) : 1;
   const tones = ["lilac", "sky", "lilac", "sky", "pink"]; // pink is a small accent
-  insights.themes.forEach((theme, i) => {
+  themes.forEach((theme, i) => {
     const chip = h("span", { class: `theme-chip tone-${tones[i % tones.length]}` }, [
       document.createTextNode(theme.label),
       h("small", { text: String(theme.count) }),
@@ -400,7 +405,7 @@ async function initInsightsPage() {
 
   // Recent concerns
   const concernsEl = document.getElementById("concerns");
-  for (const concern of insights.concerns) {
+  for (const concern of insights.concerns || []) {
     concernsEl.append(
       h("li", {}, [
         sparkle(),
@@ -414,7 +419,7 @@ async function initInsightsPage() {
 
   // Patterns
   const patternsEl = document.getElementById("patterns");
-  for (const pattern of insights.patterns) {
+  for (const pattern of insights.patterns || []) {
     patternsEl.append(h("li", {}, [sparkle(), h("div", { text: pattern })]));
   }
 }

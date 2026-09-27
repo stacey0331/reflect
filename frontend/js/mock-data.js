@@ -133,7 +133,8 @@ export const mockApi = {
 // aggregation). The shape below is just a suggestion for what the UI renders.
 // -----------------------------------------------------------------------------
 export const MOCK_INSIGHTS = {
-  weekLabel: "Sep 13 to Sep 19",
+  weekLabel: "2026-W37",
+  dateRange: "2026-09-13 to 2026-09-19",
 
   // Where the week went, in hours. tone is one of: lilac, sky, pink
   timeAllocation: [
