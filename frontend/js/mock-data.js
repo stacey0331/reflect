@@ -171,4 +171,64 @@ export const MOCK_INSIGHTS = {
     "You mention feeling good on days with a walk or a workout.",
     "Worries about money tend to appear right after plans with friends.",
   ],
+
+  monthly: {
+    weekLabel: "2026-09",
+    dateRange: "2026-09-01 to 2026-09-30",
+    weeklyReflection:
+      "September has felt like a month of catching up. You’ve been in motion, but not always by choice. The work pattern still dominates, and the calmest moments are the ones where you step away from screens and back into your routine.",
+    timeAllocation: [
+      { label: "Work", hours: 96, tone: "lilac" },
+      { label: "Rest and sleep-ins", hours: 52, tone: "sky" },
+      { label: "Friends and family", hours: 30, tone: "pink" },
+      { label: "Cooking and home", hours: 24, tone: "sky" },
+      { label: "Movement", hours: 18, tone: "lilac" },
+    ],
+    themes: [
+      { label: "workload", count: 10 },
+      { label: "sleep", count: 8 },
+      { label: "family", count: 6 },
+      { label: "home", count: 5 },
+      { label: "money", count: 4 },
+    ],
+    concerns: [
+      { text: "The rhythm keeps slipping", note: "Reappeared across multiple entries" },
+      { text: "A few too many late nights", note: "Especially on work-heavy days" },
+    ],
+    patterns: [
+      "Your best days are the ones with a walk, a meal, or a real conversation.",
+      "Stress seems to spike when the week gets crowded and there’s no recovery time.",
+      "You can feel the difference when your routine gets modest and consistent.",
+    ],
+  },
+
+  yearly: {
+    weekLabel: "2026",
+    dateRange: "2026-01-01 to 2026-12-31",
+    weeklyReflection:
+      "This year has been about momentum, but not always with enough recovery. The pattern is bigger than a single month: work and obligations dominate, while your best days are the ones that include movement, rest, and actual human connection.",
+    timeAllocation: [
+      { label: "Work", hours: 1120, tone: "lilac" },
+      { label: "Rest and sleep-ins", hours: 620, tone: "sky" },
+      { label: "Friends and family", hours: 360, tone: "pink" },
+      { label: "Cooking and home", hours: 260, tone: "sky" },
+      { label: "Movement", hours: 220, tone: "lilac" },
+    ],
+    themes: [
+      { label: "focus", count: 22 },
+      { label: "rest", count: 18 },
+      { label: "family", count: 15 },
+      { label: "money", count: 12 },
+      { label: "health", count: 10 },
+    ],
+    concerns: [
+      { text: "Too much work without enough transition time", note: "It keeps showing up in the writing" },
+      { text: "Pressure around money and planning", note: "Often shows up before trips or big decisions" },
+    ],
+    patterns: [
+      "Your most sustainable days usually include a walk, a meal, or a low-pressure break.",
+      "The wave of stress is usually tied to an overloaded week and not enough recovery.",
+      "You feel most grounded when your routine is simple and steady.",
+    ],
+  },
 };

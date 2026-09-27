@@ -37,6 +37,12 @@
         <section class="recent" aria-labelledby="recent-heading">
           <div class="recent-head">
             <h2 id="recent-heading">Recent entries</h2>
+            <div class="recent-tools">
+              <label class="recent-filter" for="entry-date-filter">
+                <span>Find day</span>
+                <input id="entry-date-filter" type="date" aria-label="Filter entries by date">
+              </label>
+            </div>
           </div>
           <!-- Filled by app.js from GET /api/journal -->
           <ul class="entry-list" id="entry-list"></ul>

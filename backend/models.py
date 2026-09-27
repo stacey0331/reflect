@@ -20,7 +20,7 @@ class TimeAllocationItem(BaseModel):
         description="Category label such as Work, Exercise, Family, Recovery, or Personal admin."
     )
     hours: float = Field(
-        description="Estimated number of hours spent in this category during the week."
+        description="Approximate number of hours for this category, inferred from the journal and not meant to be exact tracked time."
     )
     tone: str = Field(
         description="The emotional tone of this time block, such as focused, calm, draining, or stressful."
@@ -45,20 +45,23 @@ class ConcernItem(BaseModel):
 class InsightResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    weekLabel: str = Field(
-        description="The week label for the analysis, such as 2026-W39."
+    periodType: str = Field(
+        description="The type of period, such as weekly, monthly, or yearly."
+    )
+    periodLabel: str = Field(
+        description="The label for the analysis period, such as 2026-W39, 2026-09, or 2026."
     )
     dateRange: str = Field(
         description="The exact date range for the analysis in YYYY-MM-DD to YYYY-MM-DD format."
     )
-    weeklyReflection: str = Field(
-        description="A concise reflection on how the week felt overall."
+    reflection: str = Field(
+        description="A concise reflection on how the period felt overall."
     )
     timeAllocation: list[TimeAllocationItem] = Field(
-        description="Estimated time allocation: where your hours went this week."
+        description="Estimated time allocation: a rough, approximate distribution of how the period felt, not exact tracked hours."
     )
     themes: list[ThemeItem] = Field(
-        description="Main recurring topics or ideas across the week. Each item is a short label and how often it appeared."
+        description="Main recurring topics or ideas across the period. Each item is a short label and how often it appeared."
     )
     concerns: list[ConcernItem] = Field(
         description="Main concerns, blockers, or recurring stressors."
@@ -86,8 +89,10 @@ class Insight(Base):
     __tablename__ = "insights"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    week_label: Mapped[str]
-    weekly_reflection: Mapped[str]
+    period_type: Mapped[str]
+    period_label: Mapped[str]
+    date_range: Mapped[str]
+    reflection: Mapped[str]
     time_allocation: Mapped[str]
     themes: Mapped[str]
     concerns: Mapped[str]

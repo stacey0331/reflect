@@ -38,11 +38,27 @@ async function request(path, options = {}) {
     ...options,
   });
 
-  if (!response.ok) {
-    throw new Error(`${options.method || "GET"} ${path} failed (${response.status})`);
+  const isJson = (response.headers.get("content-type") || "").includes("application/json");
+  let payload = null;
+
+  if (response.status !== 204) { // 204 is No Content
+    payload = isJson
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => null);
   }
-  if (response.status === 204) return null; // e.g. successful DELETE
-  return response.json();
+
+  if (!response.ok) {
+    const detail = payload && typeof payload === "object"
+      ? payload.detail ?? payload.error ?? payload.message
+      : payload;
+
+    const message = typeof detail === "string" && detail
+      ? detail
+      : `${options.method || "GET"} ${path} failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return payload;
 }
 
 // ---- Journal entries --------------------------------------------------------
@@ -106,14 +122,10 @@ export function deleteEntry(id) {
 // ---- Insights (placeholder) -------------------------------------------------
 
 /**
- * FUTURE endpoint, not part of the list above. The Insights page currently
- * renders MOCK_INSIGHTS. Once you've built analytics on the backend, expose
- * something like GET /api/insights and return the same shape (see mock-data.js).
- * Unlike the journal calls, this one stays on mock data even after USE_MOCK
- * is flipped, until you implement it.
+ * Insight payload for the dashboard. The backend now returns the same shape for
+ * all periods, keyed by period type.
  */
 export async function getInsights() {
-  // TODO(backend): return request("/insights");
   if (USE_MOCK) return MOCK_INSIGHTS;
-  return request("/insight");
+  return request("/insights");
 }

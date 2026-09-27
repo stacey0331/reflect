@@ -122,12 +122,14 @@ function initJournalPage() {
   const countEl = document.getElementById("word-count");
   const statusEl = document.getElementById("save-status");
   const listEl = document.getElementById("entry-list");
+  const dateFilterEl = document.getElementById("entry-date-filter");
   const moreRow = document.getElementById("more-row");
   const moreBtn = document.getElementById("more-btn");
 
   const RECENT_COUNT = 5;
   let allEntries = [];
   let showAll = false;
+  let selectedDate = "";
 
   // Live date / time indicator
   function tick() {
@@ -166,8 +168,16 @@ function initJournalPage() {
       renderList();
       showStatus("Entry saved");
     } catch (error) {
-      console.error(error);
-      showStatus("Couldn't save the entry. Check that the backend is running, then try again.", true);
+      const rawMessage = error instanceof Error ? error.message : String(error ?? "");
+      const lowerMessage = rawMessage.toLowerCase();
+      const isDuplicateDayError = lowerMessage.includes("already exists")
+        || lowerMessage.includes("not allowed")
+        || lowerMessage.includes("existing one");
+
+      const message = isDuplicateDayError
+        ? "This day already has an entry. Edit it instead."
+        : "Couldn't save the entry. Check that the backend is running, then try again.";
+      showStatus(message, true);
     } finally {
       updateComposer();
       saveBtn.disabled = false;
@@ -198,25 +208,39 @@ function initJournalPage() {
   function renderList() {
     listEl.replaceChildren();
 
-    if (allEntries.length === 0) {
-      listEl.append(
-        h("li", { class: "empty", text: "No entries yet. Write your first one above and it will show up here." })
-      );
+    const filteredEntries = selectedDate
+      ? allEntries.filter((entry) => {
+          const entryDate = new Date(entry.date || entry.created_at).toISOString().slice(0, 10);
+          return entryDate === selectedDate;
+        })
+      : allEntries;
+
+    if (filteredEntries.length === 0) {
+      const emptyText = selectedDate
+        ? `No entries for ${selectedDate}.`
+        : "No entries yet. Write your first one above and it will show up here.";
+      listEl.append(h("li", { class: "empty", text: emptyText }));
       moreRow.hidden = true;
       return;
     }
 
-    const visible = showAll ? allEntries : allEntries.slice(0, RECENT_COUNT);
+    const visible = showAll ? filteredEntries : filteredEntries.slice(0, RECENT_COUNT);
     for (const entry of visible) listEl.append(entryCard(entry));
 
-    moreRow.hidden = allEntries.length <= RECENT_COUNT;
+    moreRow.hidden = filteredEntries.length <= RECENT_COUNT;
     moreBtn.textContent = showAll
       ? "Show fewer entries"
-      : `Show all ${allEntries.length} entries`;
+      : `Show all ${filteredEntries.length} entries`;
   }
 
   moreBtn.addEventListener("click", () => {
     showAll = !showAll;
+    renderList();
+  });
+
+  dateFilterEl.addEventListener("input", (event) => {
+    selectedDate = event.target.value;
+    showAll = false;
     renderList();
   });
 
@@ -359,68 +383,258 @@ async function initEntryPage() {
 // Renders PLACEHOLDER data from api.getInsights(). See mock-data.js.
 
 async function initInsightsPage() {
-  const insights = await api.getInsights();
+  const response = await api.getInsights();
+  const weekly = response?.weekly || response;
+  const monthly = response?.monthly || null;
+  const yearly = response?.yearly || null;
 
-  const weekLabelEl = document.getElementById("week-label");
-  const labelText = insights.dateRange
-    ? `${insights.weekLabel} · ${insights.dateRange}`
-    : insights.weekLabel;
-  weekLabelEl.textContent = labelText;
-  document.getElementById("weekly-reflection").textContent = insights.weeklyReflection;
+  const normalizeInsight = (insight) => {
+    if (!insight) return null;
+    return {
+      periodType: insight.periodType || insight.period_type || "weekly",
+      periodLabel: insight.periodLabel || insight.period_label || insight.weekLabel || "",
+      dateRange: insight.dateRange || insight.date_range || "",
+      reflection: insight.reflection || "Not enough data.",
+      timeAllocation: insight.timeAllocation || insight.time_allocation || [],
+      themes: insight.themes || [],
+      concerns: insight.concerns || [],
+      patterns: insight.patterns || [],
+    };
+  };
 
-  // Time allocation: 20-block pixel bars, scaled to the biggest category
-  const SEGMENTS = 20;
-  const barsEl = document.getElementById("time-bars");
-  const maxHours = Math.max(...(insights.timeAllocation || []).map((t) => t.hours));
-  for (const item of insights.timeAllocation || []) {
-    const filled = Math.max(1, Math.round((item.hours / maxHours) * SEGMENTS));
-    const segments = h("div", { class: "segments", "aria-hidden": "true" });
-    for (let i = 0; i < SEGMENTS; i++) {
-      segments.append(h("i", { class: i < filled ? `on tone-${item.tone}` : "" }));
+  const weeklyInsight = normalizeInsight(weekly);
+  if (weeklyInsight) {
+    const weekLabelEl = document.getElementById("week-label");
+    const labelText = weeklyInsight.dateRange
+      ? `${weeklyInsight.periodLabel} · ${weeklyInsight.dateRange}`
+      : weeklyInsight.periodLabel;
+    weekLabelEl.textContent = labelText;
+    document.getElementById("weekly-reflection").textContent = weeklyInsight.reflection;
+
+    const SEGMENTS = 20;
+    const barsEl = document.getElementById("time-bars");
+    const items = weeklyInsight.timeAllocation || [];
+    const totalHours = items.reduce((sum, item) => sum + Math.max(0, Number(item.hours || 0)), 0);
+    const toneMap = {
+      lilac: "lilac",
+      lavender: "lilac",
+      sky: "sky",
+      blue: "sky",
+      pink: "pink",
+      rose: "pink",
+      calm: "sky",
+      focused: "lilac",
+      draining: "pink",
+      stressful: "pink",
+    };
+
+    for (const item of items) {
+      const tone = toneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
+      const displayHours = Math.round(Number(item.hours || 0));
+      const fraction = totalHours > 0 ? Number(item.hours || 0) / totalHours : 0;
+      const percentage = totalHours > 0 ? Math.round(fraction * 100) : 0;
+      const filled = totalHours > 0 ? Math.max(1, Math.round(fraction * SEGMENTS)) : 0;
+      const segments = h("div", { class: "segments", "aria-hidden": "true" });
+      for (let i = 0; i < SEGMENTS; i++) {
+        segments.append(h("i", { class: i < filled ? `on tone-${tone}` : "" }));
+      }
+      barsEl.append(
+        h("div", { class: "bar-row" }, [
+          h("div", { class: "bar-label" }, [
+            h("span", { text: item.label }),
+            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+          ]),
+          segments,
+        ])
+      );
     }
-    barsEl.append(
-      h("div", { class: "bar-row" }, [
-        h("div", { class: "bar-label" }, [
-          h("span", { text: item.label }),
-          h("span", { text: `${item.hours} hrs` }),
-        ]),
-        segments,
-      ])
-    );
+
+    const cloudEl = document.getElementById("theme-cloud");
+    const themes = weeklyInsight.themes || [];
+    const maxCount = themes.length ? Math.max(...themes.map((t) => t.count)) : 1;
+    const tones = ["lilac", "sky", "lilac", "sky", "pink"];
+    themes.forEach((theme, i) => {
+      const chip = h("span", { class: `theme-chip tone-${tones[i % tones.length]}` }, [
+        document.createTextNode(theme.label),
+        h("small", { text: String(theme.count) }),
+      ]);
+      chip.style.fontSize = `${(0.8125 + (theme.count / maxCount) * 0.3).toFixed(2)}rem`;
+      cloudEl.append(chip);
+    });
+
+    const concernsEl = document.getElementById("concerns");
+    for (const concern of weeklyInsight.concerns || []) {
+      concernsEl.append(
+        h("li", {}, [
+          sparkle(),
+          h("div", {}, [
+            document.createTextNode(concern.text),
+            h("span", { class: "note", text: concern.note }),
+          ]),
+        ])
+      );
+    }
+
+    const patternsEl = document.getElementById("patterns");
+    for (const pattern of weeklyInsight.patterns || []) {
+      patternsEl.append(h("li", {}, [sparkle(), h("div", { text: pattern })]));
+    }
   }
 
-  // Recurring themes: bigger text for themes that appear more often
-  const cloudEl = document.getElementById("theme-cloud");
-  const themes = insights.themes || [];
-  const maxCount = themes.length ? Math.max(...themes.map((t) => t.count)) : 1;
-  const tones = ["lilac", "sky", "lilac", "sky", "pink"]; // pink is a small accent
-  themes.forEach((theme, i) => {
-    const chip = h("span", { class: `theme-chip tone-${tones[i % tones.length]}` }, [
-      document.createTextNode(theme.label),
-      h("small", { text: String(theme.count) }),
-    ]);
-    chip.style.fontSize = `${(0.8125 + (theme.count / maxCount) * 0.3).toFixed(2)}rem`;
-    cloudEl.append(chip);
-  });
+  const monthlyInsight = normalizeInsight(monthly);
+  if (monthlyInsight) {
+    const monthlyLabelEl = document.getElementById("monthly-label");
+    const monthlyLabelText = monthlyInsight.dateRange
+      ? `${monthlyInsight.periodLabel} · ${monthlyInsight.dateRange}`
+      : monthlyInsight.periodLabel;
+    monthlyLabelEl.textContent = monthlyLabelText;
+    document.getElementById("monthly-reflection").textContent = monthlyInsight.reflection;
 
-  // Recent concerns
-  const concernsEl = document.getElementById("concerns");
-  for (const concern of insights.concerns || []) {
-    concernsEl.append(
-      h("li", {}, [
-        sparkle(),
-        h("div", {}, [
-          document.createTextNode(concern.text),
-          h("span", { class: "note", text: concern.note }),
-        ]),
-      ])
-    );
+    const monthlyBarsEl = document.getElementById("monthly-time-bars");
+    const monthlyItems = monthlyInsight.timeAllocation || [];
+    const monthlyTotalHours = monthlyItems.reduce((sum, item) => sum + Math.max(0, Number(item.hours || 0)), 0);
+    const monthlyToneMap = {
+      lilac: "lilac",
+      lavender: "lilac",
+      sky: "sky",
+      blue: "sky",
+      pink: "pink",
+      rose: "pink",
+      calm: "sky",
+      focused: "lilac",
+      draining: "pink",
+      stressful: "pink",
+    };
+
+    for (const item of monthlyItems) {
+      const tone = monthlyToneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
+      const displayHours = Math.round(Number(item.hours || 0));
+      const fraction = monthlyTotalHours > 0 ? Number(item.hours || 0) / monthlyTotalHours : 0;
+      const percentage = monthlyTotalHours > 0 ? Math.round(fraction * 100) : 0;
+      const filled = monthlyTotalHours > 0 ? Math.max(1, Math.round(fraction * 20)) : 0;
+      const segments = h("div", { class: "segments", "aria-hidden": "true" });
+      for (let i = 0; i < 20; i++) {
+        segments.append(h("i", { class: i < filled ? `on tone-${tone}` : "" }));
+      }
+      monthlyBarsEl.append(
+        h("div", { class: "bar-row" }, [
+          h("div", { class: "bar-label" }, [
+            h("span", { text: item.label }),
+            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+          ]),
+          segments,
+        ])
+      );
+    }
+
+    const monthlyCloudEl = document.getElementById("monthly-theme-cloud");
+    const monthlyThemes = monthlyInsight.themes || [];
+    const monthlyMaxCount = monthlyThemes.length ? Math.max(...monthlyThemes.map((t) => t.count)) : 1;
+    const monthlyTones = ["lilac", "sky", "lilac", "sky", "pink"];
+    monthlyThemes.forEach((theme, i) => {
+      const chip = h("span", { class: `theme-chip tone-${monthlyTones[i % monthlyTones.length]}` }, [
+        document.createTextNode(theme.label),
+        h("small", { text: String(theme.count) }),
+      ]);
+      chip.style.fontSize = `${(0.8125 + (theme.count / monthlyMaxCount) * 0.3).toFixed(2)}rem`;
+      monthlyCloudEl.append(chip);
+    });
+
+    const monthlyConcernsEl = document.getElementById("monthly-concerns");
+    for (const concern of monthlyInsight.concerns || []) {
+      monthlyConcernsEl.append(
+        h("li", {}, [
+          sparkle(),
+          h("div", {}, [
+            document.createTextNode(concern.text),
+            h("span", { class: "note", text: concern.note }),
+          ]),
+        ])
+      );
+    }
+
+    const monthlyPatternsEl = document.getElementById("monthly-patterns");
+    for (const pattern of monthlyInsight.patterns || []) {
+      monthlyPatternsEl.append(h("li", {}, [sparkle(), h("div", { text: pattern })]));
+    }
   }
 
-  // Patterns
-  const patternsEl = document.getElementById("patterns");
-  for (const pattern of insights.patterns || []) {
-    patternsEl.append(h("li", {}, [sparkle(), h("div", { text: pattern })]));
+  const yearlyInsight = normalizeInsight(yearly);
+  if (yearlyInsight) {
+    const yearlyLabelEl = document.getElementById("yearly-label");
+    const yearlyLabelText = yearlyInsight.dateRange
+      ? `${yearlyInsight.periodLabel} · ${yearlyInsight.dateRange}`
+      : yearlyInsight.periodLabel;
+    yearlyLabelEl.textContent = yearlyLabelText;
+    document.getElementById("yearly-reflection").textContent = yearlyInsight.reflection;
+
+    const yearlyBarsEl = document.getElementById("yearly-time-bars");
+    const yearlyItems = yearlyInsight.timeAllocation || [];
+    const yearlyTotalHours = yearlyItems.reduce((sum, item) => sum + Math.max(0, Number(item.hours || 0)), 0);
+    const yearlyToneMap = {
+      lilac: "lilac",
+      lavender: "lilac",
+      sky: "sky",
+      blue: "sky",
+      pink: "pink",
+      rose: "pink",
+      calm: "sky",
+      focused: "lilac",
+      draining: "pink",
+      stressful: "pink",
+    };
+
+    for (const item of yearlyItems) {
+      const tone = yearlyToneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
+      const displayHours = Math.round(Number(item.hours || 0));
+      const fraction = yearlyTotalHours > 0 ? Number(item.hours || 0) / yearlyTotalHours : 0;
+      const percentage = yearlyTotalHours > 0 ? Math.round(fraction * 100) : 0;
+      const filled = yearlyTotalHours > 0 ? Math.max(1, Math.round(fraction * 20)) : 0;
+      const segments = h("div", { class: "segments", "aria-hidden": "true" });
+      for (let i = 0; i < 20; i++) {
+        segments.append(h("i", { class: i < filled ? `on tone-${tone}` : "" }));
+      }
+      yearlyBarsEl.append(
+        h("div", { class: "bar-row" }, [
+          h("div", { class: "bar-label" }, [
+            h("span", { text: item.label }),
+            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+          ]),
+          segments,
+        ])
+      );
+    }
+
+    const yearlyCloudEl = document.getElementById("yearly-theme-cloud");
+    const yearlyThemes = yearlyInsight.themes || [];
+    const yearlyMaxCount = yearlyThemes.length ? Math.max(...yearlyThemes.map((t) => t.count)) : 1;
+    const yearlyTones = ["lilac", "sky", "lilac", "sky", "pink"];
+    yearlyThemes.forEach((theme, i) => {
+      const chip = h("span", { class: `theme-chip tone-${yearlyTones[i % yearlyTones.length]}` }, [
+        document.createTextNode(theme.label),
+        h("small", { text: String(theme.count) }),
+      ]);
+      chip.style.fontSize = `${(0.8125 + (theme.count / yearlyMaxCount) * 0.3).toFixed(2)}rem`;
+      yearlyCloudEl.append(chip);
+    });
+
+    const yearlyConcernsEl = document.getElementById("yearly-concerns");
+    for (const concern of yearlyInsight.concerns || []) {
+      yearlyConcernsEl.append(
+        h("li", {}, [
+          sparkle(),
+          h("div", {}, [
+            document.createTextNode(concern.text),
+            h("span", { class: "note", text: concern.note }),
+          ]),
+        ])
+      );
+    }
+
+    const yearlyPatternsEl = document.getElementById("yearly-patterns");
+    for (const pattern of yearlyInsight.patterns || []) {
+      yearlyPatternsEl.append(h("li", {}, [sparkle(), h("div", { text: pattern })]));
+    }
   }
 }
 

@@ -50,8 +50,9 @@
   --edge-soft: #dcd5f6;     /* quiet outline for cards */
   --edge-blue: #dbe9fa;     /* outline for the sidebar */
 
-  /* Type: one pixel font for everything */
-  --font-pixel: "Pixelify Sans", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Make the whole app feel like a typed journal while keeping the Y2K boxy layout */
+  --font-pixel: "Courier Prime", "Courier New", "Lucida Console", monospace;
+  --font-journal: "Courier Prime", "Courier New", "Lucida Console", monospace;
 
   /* Pixel-art sprites, drawn as masks so they take any color.
      Each is sized in multiples of --px so the pixels stay crisp. */
@@ -63,7 +64,6 @@
 *::before,
 *::after {
   box-sizing: border-box;
-  font-family: var(--font-pixel);
 }
 
 button,
@@ -72,6 +72,7 @@ textarea,
 select,
 option {
   font: inherit;
+  font-family: var(--font-pixel);
 }
 
 html {
@@ -81,9 +82,10 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: var(--font-pixel);
+  font-family: var(--font-journal);
   font-size: 0.875rem;
   line-height: 1.6;
+  letter-spacing: 0.01em;
   color: var(--ink);
   background: var(--page);
 }
@@ -94,7 +96,11 @@ h3 {
   margin: 0;
   font-family: var(--font-pixel);
   font-weight: 500;
-  line-height: 1.15;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  color: #111019;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 rgba(17, 16, 25, 0.08);
 }
 
 h1 {
@@ -210,9 +216,12 @@ ul {
   padding: 0 8px;
   font-family: var(--font-pixel);
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-decoration: none;
-  color: var(--ink);
+  color: #111019;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 rgba(17, 16, 25, 0.08);
 }
 
 .nav {
@@ -228,10 +237,12 @@ ul {
   padding: 6px 14px;
   margin: 2px;
   font-family: var(--font-pixel);
-  font-size: 0.9375rem;
-  font-weight: 500;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-decoration: none;
   color: var(--ink-soft);
+  text-transform: uppercase;
 }
 
 .nav a:hover {
@@ -292,9 +303,11 @@ ul {
   display: inline-block;
   padding: 2px 12px;
   font-family: var(--font-pixel);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #111019;
   background: var(--baby);
   --edge: var(--baby-deep);
   box-shadow:
@@ -323,9 +336,11 @@ ul {
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-family: var(--font-pixel);
+  font-family: var(--font-journal);
   font-size: 1rem;
   line-height: 1.7;
+  letter-spacing: 0.015em;
+  font-weight: 500;
   resize: vertical;
 }
 
@@ -486,10 +501,50 @@ ul {
 
 .recent-head {
   display: flex;
-  align-items: baseline;
+  align-items: end;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.recent-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recent-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-family: var(--font-pixel);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: var(--white);
+  border: 2px solid var(--edge-soft);
+  box-shadow: 0 -2px 0 0 var(--lav-mid), 0 2px 0 0 var(--lav-mid), -2px 0 0 0 var(--lav-mid), 2px 0 0 0 var(--lav-mid);
+}
+
+.recent-filter input {
+  min-width: 140px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+  padding: 2px 0;
+}
+
+.recent-filter input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.2) saturate(0.9);
+}
+
+.recent-filter input:focus {
+  outline: none;
 }
 
 .entry-list {
@@ -534,13 +589,14 @@ ul {
 
 .date-sticker .month {
   font-size: 0.75rem;
+  font-weight: 700;
   color: var(--ink-soft);
 }
 
 .date-sticker .day {
   margin-top: 4px;
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .entry-card .meta {
@@ -555,6 +611,7 @@ ul {
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-top: 2px;
+  font-family: var(--font-journal);
   font-size: 0.9375rem;
   line-height: 1.5;
 }
@@ -752,6 +809,10 @@ ul {
   flex: 1;
   height: 16px;
   background: #ece8fb;
+}
+
+.segments i.on {
+  background: var(--lav-mid);
 }
 
 .segments i.on.tone-lilac { background: var(--lav-mid); }
