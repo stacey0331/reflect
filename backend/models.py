@@ -15,6 +15,27 @@ class JournalEntryUpdate(BaseModel):
     date: Date
     content: str
 
+class ImportantEventCreate(BaseModel):
+    title: str
+    category: str
+    summary: str
+    event_date: Date
+    severity: int = Field(default=7, ge=1, le=10)
+    is_active: bool = True
+    related_journal_id: int | None = None
+    source: str = "manual"
+
+class ImportantEventResponse(BaseModel):
+    id: int
+    title: str
+    category: str
+    summary: str
+    event_date: Date
+    severity: int
+    is_active: bool
+    related_journal_id: int | None = None
+    source: str
+
 class TimeAllocationItem(BaseModel):
     label: str = Field(
         description="Category label such as Work, Exercise, Family, Recovery, or Personal admin."
@@ -99,6 +120,25 @@ class Insight(Base):
     patterns: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True)
+    )
+
+class ImportantEvent(Base):
+    __tablename__ = "important_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str]
+    category: Mapped[str]
+    summary: Mapped[str]
+    event_date: Mapped[Date]
+    severity: Mapped[int] = mapped_column(default=7)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    related_journal_id: Mapped[int | None] = mapped_column(default=None)
+    source: Mapped[str] = mapped_column(default="manual")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
 

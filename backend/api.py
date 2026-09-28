@@ -1,11 +1,21 @@
 import calendar
 import json
 import os
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .models import JournalEntry, JournalEntryCreate, JournalEntryUpdate, Insight, InsightResponse
+from .models import (
+    ImportantEvent,
+    ImportantEventCreate,
+    JournalEntry,
+    JournalEntryCreate,
+    JournalEntryUpdate,
+    Insight,
+    InsightResponse,
+)
+from .event_patterns import EVENT_PATTERNS
 from .database import SessionLocal
 from .logging_config import logger
 from google import genai
@@ -15,9 +25,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set. Source backend/.env.local before starting the server.")
 
+DUPLICATE_DAY_MESSAGE = "An entry already exists for that day. Edit it instead."
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 INSIGHT_MODELS = (
-    "gemini-3.8-flash",
+    # "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
 )
 
@@ -38,7 +50,17 @@ def get_db():
     finally:
         db.close()
 
-DUPLICATE_DAY_MESSAGE = "An entry already exists for that day. Edit it instead."
+
+def _serialize_journal_entry(entry: JournalEntry):
+    if entry is None:
+        return None
+    return {
+        "id": entry.id,
+        "date": entry.date.isoformat() if isinstance(entry.date, date) else entry.date,
+        "content": entry.content,
+        "created_at": entry.created_at.isoformat() if isinstance(entry.created_at, datetime) else entry.created_at,
+        "updated_at": entry.updated_at.isoformat() if hasattr(entry, "updated_at") and entry.updated_at is not None and isinstance(entry.updated_at, datetime) else None,
+    }
 
 
 @app.post("/api/journal")
@@ -61,20 +83,31 @@ def create_journal_entry(
     db.add(db_entry)
     db.commit()
     db.refresh(db_entry)
-    return db_entry
+
+    try:
+        _upsert_event_candidate_from_entry(db, db_entry)
+    except Exception:
+        logger.exception(
+            "Important event detection failed for journal entry %s; keeping the entry saved.",
+            db_entry.id,
+        )
+    return _serialize_journal_entry(db_entry)
+
 
 @app.get("/api/journal")
 def get_journal_entries(
     db = Depends(get_db)
 ):
-    return db.query(JournalEntry).order_by(JournalEntry.created_at.desc()).all()
+    return [_serialize_journal_entry(entry) for entry in db.query(JournalEntry).order_by(JournalEntry.created_at.desc()).all()]
+
 
 @app.get("/api/journal/{id}")
 def get_journal_entry(
     id: int,
     db = Depends(get_db)
 ):
-    return db.query(JournalEntry).filter(JournalEntry.id == id).first()
+    return _serialize_journal_entry(db.query(JournalEntry).filter(JournalEntry.id == id).first())
+
 
 @app.put("/api/journal/{id}")
 def update_journal_entry(
@@ -88,7 +121,14 @@ def update_journal_entry(
         db_entry.content = entry.content
         db.commit()
         db.refresh(db_entry)
-    return db_entry
+    try:
+        _upsert_event_candidate_from_entry(db, db_entry)
+    except Exception:
+        logger.exception(
+            "Important event detection failed for journal entry %s; keeping the entry saved.",
+            db_entry.id,
+        )
+    return _serialize_journal_entry(db_entry)
 
 @app.delete("/api/journal/{id}")
 def delete_journal_entry(
@@ -224,6 +264,105 @@ def _get_or_create_insight_for_range(db, period_type, period_label, start_date, 
     return _generate_insight_for_range(db, period_type, period_label, start_date, end_date)
 
 
+def _signal_strength_for_text(text: str) -> tuple[str | None, int, str]:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", text.lower())
+    phrase_matches = []
+    for category, patterns in EVENT_PATTERNS.items():
+        matched = [pattern for pattern in patterns if pattern in normalized]
+        if matched:
+            phrase_matches.append((category, len(matched)))
+
+    if not phrase_matches:
+        return None, 0, ""
+
+    category, count = max(phrase_matches, key=lambda item: item[1])
+    score = count * 4 + min(len(normalized.split()), 18)
+    return category, score, normalized
+
+
+def _already_has_similar_event(db, category: str, event_date: date, summary: str) -> bool:
+    existing = (
+        db.query(ImportantEvent)
+        .filter(ImportantEvent.category == category)
+        .filter(ImportantEvent.is_active.is_(True))
+        .all()
+    )
+    if not existing:
+        return False
+
+    summary_tokens = set(re.sub(r"[^a-z0-9]", " ", summary.lower()).split())
+    for event in existing:
+        delta_days = abs((event_date - event.event_date).days)
+        if delta_days <= 45:
+            return True
+        event_tokens = set(re.sub(r"[^a-z0-9]", " ", event.summary.lower()).split())
+        overlap = len(summary_tokens & event_tokens)
+        if overlap >= 4 and event.category == category:
+            return True
+    return False
+
+
+def _upsert_event_candidate_from_entry(db, entry: JournalEntry):
+    category, score, _ = _signal_strength_for_text(entry.content)
+    if category is None or score < 8:
+        return None
+
+    summary = entry.content.strip()
+    if len(summary) > 220:
+        summary = summary[:217].rstrip() + "..."
+
+    if _already_has_similar_event(db, category, entry.date, summary):
+        logger.info("Skipping duplicate important event candidate for %s on %s", category, entry.date.isoformat())
+        return None
+
+    existing_count = db.query(ImportantEvent).filter(ImportantEvent.is_active.is_(True)).count()
+    if existing_count >= 10:
+        logger.info("Important event cap reached; skipping new event candidate for %s", category)
+        return None
+
+    title = category.replace("_", " ").title()
+    db_event = ImportantEvent(
+        title=title,
+        category=category,
+        summary=summary,
+        event_date=entry.date,
+        severity=min(10, max(6, score // 2)),
+        is_active=True,
+        related_journal_id=entry.id,
+        source="auto-detect",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(db_event)
+    db.commit()
+    db.refresh(db_event)
+    logger.info("Created important event candidate: %s (%s)", title, category)
+    return db_event
+
+
+def _detect_important_events(db, limit=10):
+    active_events = (
+        db.query(ImportantEvent)
+        .filter(ImportantEvent.is_active.is_(True))
+        .order_by(ImportantEvent.event_date.desc())
+        .limit(limit)
+        .all()
+    )
+    return active_events[:limit]
+
+
+def _get_life_context_text(db):
+    events = _detect_important_events(db, limit=10)
+    if not events:
+        return "No active important life events detected."
+
+    formatted = []
+    for event in events:
+        label = f"{event.event_date.isoformat()} — {event.category} — {event.title}"
+        formatted.append(f"- {label}: {event.summary}")
+    return "\n".join(formatted)
+
+
 def _generate_insight_for_range(db, period_type, period_label, start_date, end_date):
     range_entries = (
         db.query(JournalEntry)
@@ -237,17 +376,35 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
         logger.warning("No journal entries found for %s %s; returning empty insight", period_type, period_label)
         return _empty_insight(period_type, period_label, start_date, end_date)
 
-    entries_text = "\n\n".join(
+    current_entries_text = "\n\n".join(
         f"{entry.date.isoformat()}: {entry.content}"
         for entry in range_entries
     )
 
+    previous_start_date, previous_end_date = _get_previous_period_window(period_type, start_date, end_date)
+    previous_entries = (
+        db.query(JournalEntry)
+        .filter(JournalEntry.date >= previous_start_date)
+        .filter(JournalEntry.date <= previous_end_date)
+        .order_by(JournalEntry.date.desc())
+        .all()
+    )
+    previous_entries_text = "\n\n".join(
+        f"{entry.date.isoformat()}: {entry.content}"
+        for entry in previous_entries
+    )
+    has_previous_data = bool(previous_entries)
+    life_context_text = _get_life_context_text(db)
+
     if period_type == "weekly":
         period_label_description = "week"
+        previous_label = f"previous 3 weeks ({previous_start_date.isoformat()} to {previous_end_date.isoformat()})"
     elif period_type == "monthly":
         period_label_description = "month"
+        previous_label = f"previous 3 months ({previous_start_date.isoformat()} to {previous_end_date.isoformat()})"
     else:
         period_label_description = "year"
+        previous_label = f"previous year ({previous_start_date.isoformat()} to {previous_end_date.isoformat()})"
 
     prompt = f"""
     You are helping a person reflect on their {period_label_description}.
@@ -259,27 +416,51 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     - periodLabel: {period_label}
     - dateRange: {start_date.isoformat()} to {end_date.isoformat()}
 
+    Comparison context:
+    - hasPreviousData: {str(has_previous_data).lower()}
+    - compareAgainst: {'recent baseline' if has_previous_data else 'no prior period available'}
+    - baselineLabel: {previous_label if has_previous_data else 'N/A'}
+    - baselineDateRange: {previous_start_date.isoformat()} to {previous_end_date.isoformat()} if has_previous_data else 'N/A'
+
+    ## Life context
+    These are the person's active important life events. Treat them as personal context that may shape emotional patterns, stress, or recovery during this period.
+    Keep this list limited to the most relevant active memories and do not invent anything beyond the summary provided.
+    If there are no active important events, they are not relevant and should be ignored.
+
+    {life_context_text}
+
     ## Estimated time allocation
-    Roughly estimate how the period was distributed across categories, using approximate hours only.
-    Do not pretend these hours are exact tracked time; they are best-effort estimates from the journal.
+    Estimate how the period was distributed across categories as percentages.
+    These are rough, best-effort proportions inferred from the journal, not exact tracked time.
 
     ## Reflection
-    A short summary of what the period felt like overall.
+    Write a short summary of what the period felt like overall.
+    If hasPreviousData is true, start the reflection with a sentence that explicitly compares against the recent baseline, for example:
+    "Compared with the previous 3 weeks, this week felt more intense and less restorative."
+    or "Compared with the previous 3 months, this month felt calmer and more focused."
+    or "Compared with last year, this year feels more fragmented and slower to recover."
+    If hasPreviousData is false, do not mention a comparison at all. Write a normal summary of the period without comparing against a prior window.
+    After the comparison sentence or the normal summary, add 1 thoughtful question that arises from the period.
+    These should be open-ended, specific to the journal entries, and designed to help the user reflect rather than to give advice.
 
     ## Themes
     The main recurring ideas or topics in the journal entries.
+    Focus on what is repeated across multiple entries, not one-off events.
 
     ## Concerns
     The main worries, blockers, or stressors from the period.
 
     ## Patterns
-    Recurring habits or behaviors visible across the period.
+    Recurring habits or behaviors visible across the period, especially if they changed compared with the recent baseline.
 
     Return valid JSON that matches this schema:
     {InsightResponse.model_json_schema()}
 
-    Journal entries:
-    {entries_text}
+    Current period journal entries:
+    {current_entries_text}
+
+    Previous period journal entries (only if available):
+    {previous_entries_text if has_previous_data else 'No previous period data available.'}
     """
 
     logger.debug("Insight prompt for %s %s: %s", period_type, period_label, prompt)
@@ -352,6 +533,34 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     db.refresh(db_insight)
 
     return insight.model_dump(by_alias=True)
+
+
+def _get_previous_period_window(period_type, start_date, end_date):
+    if period_type == "weekly":
+        previous_start = start_date - timedelta(days=21)
+        previous_end = start_date - timedelta(days=1)
+        return previous_start, previous_end
+
+    if period_type == "monthly":
+        if start_date.month <= 3:
+            previous_year = start_date.year - 1
+            previous_month = start_date.month + 9
+        else:
+            previous_year = start_date.year
+            previous_month = start_date.month - 3
+
+        previous_start = date(previous_year, previous_month, 1)
+        previous_end = date(
+            previous_year,
+            previous_month,
+            calendar.monthrange(previous_year, previous_month)[1],
+        )
+        return previous_start, previous_end
+
+    previous_year = start_date.year - 1
+    previous_start = date(previous_year, 1, 1)
+    previous_end = date(previous_year, 12, 31)
+    return previous_start, previous_end
 
 
 def _get_week_label_for_date(day: date) -> str:

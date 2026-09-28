@@ -430,7 +430,6 @@ async function initInsightsPage() {
 
     for (const item of items) {
       const tone = toneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
-      const displayHours = Math.round(Number(item.hours || 0));
       const fraction = totalHours > 0 ? Number(item.hours || 0) / totalHours : 0;
       const percentage = totalHours > 0 ? Math.round(fraction * 100) : 0;
       const filled = totalHours > 0 ? Math.max(1, Math.round(fraction * SEGMENTS)) : 0;
@@ -442,7 +441,7 @@ async function initInsightsPage() {
         h("div", { class: "bar-row" }, [
           h("div", { class: "bar-label" }, [
             h("span", { text: item.label }),
-            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+            h("span", { text: `${percentage}%` }),
           ]),
           segments,
         ])
@@ -508,7 +507,6 @@ async function initInsightsPage() {
 
     for (const item of monthlyItems) {
       const tone = monthlyToneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
-      const displayHours = Math.round(Number(item.hours || 0));
       const fraction = monthlyTotalHours > 0 ? Number(item.hours || 0) / monthlyTotalHours : 0;
       const percentage = monthlyTotalHours > 0 ? Math.round(fraction * 100) : 0;
       const filled = monthlyTotalHours > 0 ? Math.max(1, Math.round(fraction * 20)) : 0;
@@ -520,7 +518,7 @@ async function initInsightsPage() {
         h("div", { class: "bar-row" }, [
           h("div", { class: "bar-label" }, [
             h("span", { text: item.label }),
-            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+            h("span", { text: `${percentage}%` }),
           ]),
           segments,
         ])
@@ -586,7 +584,6 @@ async function initInsightsPage() {
 
     for (const item of yearlyItems) {
       const tone = yearlyToneMap[String(item.tone || "").trim().toLowerCase()] || "lilac";
-      const displayHours = Math.round(Number(item.hours || 0));
       const fraction = yearlyTotalHours > 0 ? Number(item.hours || 0) / yearlyTotalHours : 0;
       const percentage = yearlyTotalHours > 0 ? Math.round(fraction * 100) : 0;
       const filled = yearlyTotalHours > 0 ? Math.max(1, Math.round(fraction * 20)) : 0;
@@ -598,7 +595,7 @@ async function initInsightsPage() {
         h("div", { class: "bar-row" }, [
           h("div", { class: "bar-label" }, [
             h("span", { text: item.label }),
-            h("span", { text: `~${displayHours} hrs · ${percentage}%` }),
+            h("span", { text: `${percentage}%` }),
           ]),
           segments,
         ])
