@@ -482,6 +482,7 @@ async function initEntryPage() {
 
 async function initInsightsPage() {
   const insightsGrid = document.querySelector(".insights-grid");
+  let auth = null;
 
   function renderSignInPrompt(title, description) {
     insightsGrid.hidden = true;
@@ -507,7 +508,7 @@ async function initInsightsPage() {
   }
 
   try {
-    const auth = await fetchAuthStatus();
+    auth = await fetchAuthStatus();
     if (!auth.authenticated) {
       renderSignInPrompt(
         "Start with a journal entry",
@@ -522,6 +523,31 @@ async function initInsightsPage() {
       "Reflect couldn't check your sign-in or load your insights. Check that the backend is running, then try again."
     );
     return;
+  }
+
+  if (!auth.has_calendar_access) {
+    const calendarWasDeclined = new URLSearchParams(window.location.search).get("status") === "calendar_denied";
+    const calendarPrompt = h("section", {
+      class: "auth-prompt calendar-connect-prompt",
+      "aria-labelledby": "calendar-connect-heading",
+    }, [
+      h("div", { class: "auth-prompt-copy" }, [
+        h("h2", { id: "calendar-connect-heading", text: calendarWasDeclined ? "Calendar stays optional" : "Add Calendar context" }),
+        h("p", {
+          text: calendarWasDeclined
+            ? "Calendar wasn't connected. You can keep using your journal and insights, or connect Calendar later."
+            : "Your journal works without Calendar. Connect it to let Reflect include scheduled events in new insights.",
+        }),
+      ]),
+      h("div", { class: "auth-prompt-actions" }, [
+        h("a", {
+          class: "btn btn-primary",
+          href: "http://localhost:8000/calendar/connect",
+          text: "Connect Calendar",
+        }),
+      ]),
+    ]);
+    insightsGrid.before(calendarPrompt);
   }
 
   const response = await api.getInsights();

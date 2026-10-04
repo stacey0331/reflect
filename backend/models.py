@@ -121,6 +121,7 @@ class Insight(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    calendar_included: Mapped[bool] = mapped_column(default=False)
     period_type: Mapped[str]
     period_label: Mapped[str]
     date_range: Mapped[str]

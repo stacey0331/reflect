@@ -67,19 +67,20 @@ CLIENT_SECRETS_FILE = os.environ.get(
 )
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/callback")
-GOOGLE_SCOPES = [
+LOGIN_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/calendar.readonly",
 ]
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+CALENDAR_SCOPES = [*LOGIN_SCOPES, CALENDAR_SCOPE]
+MAX_CALENDAR_EVENTS_PER_INSIGHT = 250
 
 
-def get_google_flow(state: Optional[str] = None) -> Flow:
+def get_google_flow(state: Optional[str] = None, scopes=LOGIN_SCOPES) -> Flow:
     return Flow.from_client_secrets_file(
         CLIENT_SECRETS_FILE,
-        scopes=GOOGLE_SCOPES,
+        scopes=scopes,
         redirect_uri=GOOGLE_REDIRECT_URI,
         state=state,
     )
@@ -145,11 +146,29 @@ def login(request: Request):
     authorization_url, state = flow.authorization_url(
         prompt="consent",
         access_type="offline",
+        code_challenge_method="S256",
+    )
+    request.session["oauth_state"] = state
+    request.session["oauth_code_verifier"] = flow.code_verifier
+    request.session["oauth_action"] = "login"
+    return RedirectResponse(authorization_url)
+
+
+@app.get("/calendar/connect")
+def connect_calendar(request: Request):
+    if not isinstance((request.session.get("user") or {}).get("id"), int):
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/index.html?status=login_required")
+
+    flow = get_google_flow(scopes=CALENDAR_SCOPES)
+    authorization_url, state = flow.authorization_url(
+        prompt="consent",
+        access_type="offline",
         include_granted_scopes="true",
         code_challenge_method="S256",
     )
     request.session["oauth_state"] = state
     request.session["oauth_code_verifier"] = flow.code_verifier
+    request.session["oauth_action"] = "calendar"
     return RedirectResponse(authorization_url)
 
 
@@ -159,7 +178,21 @@ def callback(request: Request, db=Depends(get_db)):
     if not state:
         raise HTTPException(status_code=400, detail="Invalid session or missing state token.")
 
-    flow = get_google_flow(state=state)
+    oauth_action = request.session.get("oauth_action", "login")
+    returned_state = request.query_params.get("state")
+    if returned_state and returned_state != state:
+        raise HTTPException(status_code=400, detail="OAuth state did not match the session.")
+
+    if request.query_params.get("error"):
+        request.session.pop("oauth_state", None)
+        request.session.pop("oauth_code_verifier", None)
+        request.session.pop("oauth_action", None)
+        if oauth_action == "calendar":
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/insights.html?status=calendar_denied")
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/index.html?status=login_cancelled")
+
+    scopes = CALENDAR_SCOPES if oauth_action == "calendar" else LOGIN_SCOPES
+    flow = get_google_flow(state=state, scopes=scopes)
     code_verifier = request.session.get("oauth_code_verifier")
     if code_verifier:
         flow.code_verifier = code_verifier
@@ -175,6 +208,28 @@ def callback(request: Request, db=Depends(get_db)):
 
     credentials = flow.credentials
 
+    if oauth_action == "calendar":
+        user = request.session.get("user") or {}
+        if not isinstance(user.get("id"), int):
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/index.html?status=login_required")
+        if CALENDAR_SCOPE not in (credentials.scopes or []):
+            return RedirectResponse(f"{FRONTEND_BASE_URL}/insights.html?status=calendar_denied")
+
+        request.session["calendar_credentials"] = {
+            "token": credentials.token,
+            "refresh_token": credentials.refresh_token,
+            "token_uri": credentials.token_uri,
+            "client_id": credentials.client_id,
+            "client_secret": credentials.client_secret,
+            "scopes": credentials.scopes,
+        }
+        user["has_calendar_access"] = True
+        request.session["user"] = user
+        request.session.pop("oauth_state", None)
+        request.session.pop("oauth_code_verifier", None)
+        request.session.pop("oauth_action", None)
+        return RedirectResponse(f"{FRONTEND_BASE_URL}/insights.html?status=calendar_connected")
+
     user_info_resp = requests.get(
         "https://www.googleapis.com/oauth2/v2/userinfo",
         headers={"Authorization": f"Bearer {credentials.token}"},
@@ -189,8 +244,9 @@ def callback(request: Request, db=Depends(get_db)):
         raise HTTPException(status_code=400, detail="Google account ID was not returned.")
 
     account = get_or_create_user(db, google_id)
-    granted_scopes = credentials.scopes or []
-    has_calendar_access = CALENDAR_SCOPE in granted_scopes
+    has_calendar_access = bool(
+        request.session.get("calendar_credentials") or request.session.get("credentials")
+    )
 
     request.session["user"] = {
         "id": account.id,
@@ -200,16 +256,10 @@ def callback(request: Request, db=Depends(get_db)):
         "picture": user_info.get("picture"),
         "has_calendar_access": has_calendar_access,
     }
-    request.session["credentials"] = {
-        "token": credentials.token,
-        "refresh_token": credentials.refresh_token,
-        "token_uri": credentials.token_uri,
-        "client_id": credentials.client_id,
-        "client_secret": credentials.client_secret,
-        "scopes": credentials.scopes,
-    }
-
-    return RedirectResponse(url_for_dashboard(has_calendar_access))
+    request.session.pop("oauth_state", None)
+    request.session.pop("oauth_code_verifier", None)
+    request.session.pop("oauth_action", None)
+    return RedirectResponse(f"{FRONTEND_BASE_URL}/index.html?status=logged_in")
 
 
 def url_for_dashboard(has_calendar_access: bool) -> str:
@@ -217,27 +267,11 @@ def url_for_dashboard(has_calendar_access: bool) -> str:
     return f"{FRONTEND_BASE_URL}/index.html?status={status}"
 
 
-@app.get("/dashboard")
-def dashboard(request: Request):
-    user = request.session.get("user")
-    if not user:
-        return RedirectResponse("/login")
-    return {
-        "message": f"Welcome, {user['name']}!",
-        "user_email": user["email"],
-        "calendar_connected": user["has_calendar_access"],
-        "instructions": (
-            "Visit /calendar to see events"
-            if user["has_calendar_access"]
-            else "User declined calendar access during login. Visit /login to grant calendar permission."
-        ),
-    }
-
-
+# Shows calendar data in backend
 @app.get("/calendar")
 def read_calendar(request: Request):
     user = request.session.get("user")
-    creds_data = request.session.get("credentials")
+    creds_data = request.session.get("calendar_credentials") or request.session.get("credentials")
 
     if not user or not creds_data:
         return RedirectResponse("/login")
@@ -257,7 +291,7 @@ def read_calendar(request: Request):
     events_result = service.events().list(
         calendarId="primary",
         timeMin=time_min,
-        maxResults=100,
+        maxResults=MAX_CALENDAR_EVENTS_PER_INSIGHT,
         singleEvents=True,
         orderBy="startTime",
     ).execute()
@@ -267,6 +301,60 @@ def read_calendar(request: Request):
         "event_count": len(events),
         "events": events,
     }
+
+
+def _calendar_event_time(value: dict) -> str:
+    return value.get("dateTime", value.get("date", "unknown time"))
+
+
+def _get_calendar_context(credentials_data: dict, start_date: date, end_date: date) -> str:
+    start_time = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_time = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    events = []
+    page_token = None
+
+    try:
+        creds = Credentials(**credentials_data)
+        service = build("calendar", "v3", credentials=creds)
+        while len(events) < MAX_CALENDAR_EVENTS_PER_INSIGHT:
+            request_args = {
+                "calendarId": "primary",
+                "timeMin": start_time.isoformat().replace("+00:00", "Z"),
+                "timeMax": end_time.isoformat().replace("+00:00", "Z"),
+                "maxResults": min(250, MAX_CALENDAR_EVENTS_PER_INSIGHT - len(events)),
+                "singleEvents": True,
+                "orderBy": "startTime",
+                "fields": "items(summary,start,end,status),nextPageToken",
+            }
+            if page_token:
+                request_args["pageToken"] = page_token
+            result = service.events().list(**request_args).execute()
+            events.extend(
+                event for event in result.get("items", [])
+                if event.get("status") != "cancelled"
+            )
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+
+        truncated = bool(page_token)
+    except Exception as error:
+        logger.warning("Calendar context unavailable for insight (%s).", type(error).__name__)
+        return "Calendar events could not be retrieved for this period."
+
+    if not events:
+        return "No calendar events were found for this period."
+
+    lines = []
+    for event in events[:MAX_CALENDAR_EVENTS_PER_INSIGHT]:
+        summary = " ".join((event.get("summary") or "Untitled event").split())
+        start = _calendar_event_time(event.get("start") or {})
+        end = _calendar_event_time(event.get("end") or {})
+        lines.append(f"- {start} to {end}: {summary}")
+
+    if truncated:
+        lines.append(f"- Calendar list truncated after {MAX_CALENDAR_EVENTS_PER_INSIGHT} events.")
+    return "\n".join(lines)
 
 
 @app.get("/auth/status")
@@ -404,10 +492,13 @@ def get_insights(
     db = Depends(get_db)
 ):
     user_id = get_current_user_id(request)
+    user = request.session.get("user") or {}
+    calendar_credentials = request.session.get("calendar_credentials") or request.session.get("credentials")
+    calendar_included = bool(user.get("has_calendar_access") and calendar_credentials)
     return {
-        "weekly": _get_or_create_period_insight(db, "weekly", user_id),
-        "monthly": _get_or_create_period_insight(db, "monthly", user_id),
-        "yearly": _get_or_create_period_insight(db, "yearly", user_id),
+        "weekly": _get_or_create_period_insight(db, "weekly", user_id, calendar_credentials, calendar_included),
+        "monthly": _get_or_create_period_insight(db, "monthly", user_id, calendar_credentials, calendar_included),
+        "yearly": _get_or_create_period_insight(db, "yearly", user_id, calendar_credentials, calendar_included),
     }
 
 
@@ -440,7 +531,7 @@ def _empty_insight(period_type, period_label, start_date, end_date):
     }
 
 
-def _get_or_create_period_insight(db, period_type, user_id):
+def _get_or_create_period_insight(db, period_type, user_id, calendar_credentials=None, calendar_included=False):
     if period_type == "weekly":
         start_date, end_date = _get_last_completed_week_window()
         label = _get_week_label_for_date(start_date)
@@ -451,6 +542,8 @@ def _get_or_create_period_insight(db, period_type, user_id):
             period_label=label,
             start_date=start_date,
             end_date=end_date,
+            calendar_credentials=calendar_credentials,
+            calendar_included=calendar_included,
         )
 
     if period_type == "monthly":
@@ -473,6 +566,8 @@ def _get_or_create_period_insight(db, period_type, user_id):
                 period_label=month_label,
                 start_date=start_date,
                 end_date=end_date,
+                calendar_credentials=calendar_credentials,
+                calendar_included=calendar_included,
             )
         start_date, end_date, month_label = month_window
         return _get_or_create_insight_for_range(
@@ -482,6 +577,8 @@ def _get_or_create_period_insight(db, period_type, user_id):
             period_label=month_label,
             start_date=start_date,
             end_date=end_date,
+            calendar_credentials=calendar_credentials,
+            calendar_included=calendar_included,
         )
 
     if period_type == "yearly":
@@ -498,6 +595,8 @@ def _get_or_create_period_insight(db, period_type, user_id):
                 period_label=str(last_year),
                 start_date=start_date,
                 end_date=end_date,
+                calendar_credentials=calendar_credentials,
+                calendar_included=calendar_included,
             )
         start_date, end_date, year_label = year_window
         return _get_or_create_insight_for_range(
@@ -507,15 +606,21 @@ def _get_or_create_period_insight(db, period_type, user_id):
             period_label=year_label,
             start_date=start_date,
             end_date=end_date,
+            calendar_credentials=calendar_credentials,
+            calendar_included=calendar_included,
         )
 
     return None
 
 
-def _get_or_create_insight_for_range(db, period_type, period_label, start_date, end_date, user_id):
+def _get_or_create_insight_for_range(
+    db, period_type, period_label, start_date, end_date, user_id,
+    calendar_credentials=None, calendar_included=False,
+):
     existing = (
         db.query(Insight)
         .filter(Insight.user_id == user_id)
+        .filter(Insight.calendar_included == calendar_included)
         .filter(Insight.period_type == period_type)
         .filter(Insight.period_label == period_label)
         .order_by(Insight.created_at.desc())
@@ -526,7 +631,10 @@ def _get_or_create_insight_for_range(db, period_type, period_label, start_date, 
         return _serialize_insight_row(existing)
 
     logger.info("No stored %s insight for %s; generating insight", period_type, period_label)
-    return _generate_insight_for_range(db, period_type, period_label, start_date, end_date, user_id)
+    return _generate_insight_for_range(
+        db, period_type, period_label, start_date, end_date, user_id,
+        calendar_credentials, calendar_included,
+    )
 
 
 def _signal_strength_for_text(text: str) -> tuple[str | None, int, str]:
@@ -634,7 +742,10 @@ def _get_life_context_text(db, user_id):
     return "\n".join(formatted)
 
 
-def _generate_insight_for_range(db, period_type, period_label, start_date, end_date, user_id):
+def _generate_insight_for_range(
+    db, period_type, period_label, start_date, end_date, user_id,
+    calendar_credentials=None, calendar_included=False,
+):
     range_entries = (
         db.query(JournalEntry)
         .filter(JournalEntry.user_id == user_id)
@@ -668,6 +779,18 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     )
     has_previous_data = bool(previous_entries)
     life_context_text = _get_life_context_text(db, user_id)
+    calendar_context = (
+        _get_calendar_context(calendar_credentials, start_date, end_date)
+        if calendar_included and calendar_credentials
+        else "Calendar context was not included."
+    )
+    logger.info(
+        "Calendar context for %s (%s to %s):\n%s",
+        period_type,
+        start_date.isoformat(),
+        end_date.isoformat(),
+        calendar_context,
+    )
 
     if period_type == "weekly":
         period_label_description = "week"
@@ -682,7 +805,8 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     prompt = f"""
     You are helping a person reflect on their {period_label_description}.
 
-    Use only the journal entries below.
+    Use the journal entries and calendar events below as context. 
+    Calendar events are scheduled plans, not proof that the person attended, although the user should have attended most calendar events. 
 
     Analysis window:
     - periodType: {period_type}
@@ -701,6 +825,9 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     If there are no active important events, they are not relevant and should be ignored.
 
     {life_context_text}
+
+    ## Calendar events for this period
+    {calendar_context}
 
     ## Estimated time allocation
     Estimate how the period was distributed across categories as percentages.
@@ -783,6 +910,7 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
 
     db_insight = Insight(
         user_id=user_id,
+        calendar_included=calendar_included,
         period_type=period_type,
         period_label=period_label,
         date_range=insight.dateRange,
