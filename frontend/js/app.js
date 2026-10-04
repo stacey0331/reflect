@@ -6,6 +6,8 @@
 
 import * as api from "./api.js";
 
+const API_BASE_URL = "http://localhost:8000";
+
 // ---- Small helpers -----------------------------------------------------------
 
 /** Create an element: h("p", { class: "x", text: "hi" }, [children]) */
@@ -67,7 +69,7 @@ const wordCount = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 async function fetchAuthStatus() {
   if (api.USE_MOCK) return { authenticated: true };
 
-  const response = await fetch("http://localhost:8000/auth/status", {
+  const response = await fetch(`${API_BASE_URL}/auth/status`, {
     credentials: "include",
   });
   if (!response.ok) throw new Error(`Auth status failed (${response.status})`);
@@ -124,7 +126,7 @@ function renderSidebar(section) {
     "a",
     {
       class: "btn btn-primary sidebar-auth",
-      href: "http://localhost:8000/login",
+      href: `${API_BASE_URL}/login`,
       target: "_self",
       text: "Google login",
     }
@@ -160,7 +162,7 @@ function renderSidebar(section) {
         profileCard,
         h("a", {
           class: "sidebar-logout",
-          href: "http://localhost:8000/logout",
+          href: `${API_BASE_URL}/logout`,
           text: "Log out",
         })
       );
@@ -295,7 +297,7 @@ function initJournalPage() {
       ]),
       h("a", {
         class: "btn btn-primary",
-        href: "http://localhost:8000/login",
+        href: `${API_BASE_URL}/login`,
         text: "Sign in",
       }),
     ]);
@@ -499,7 +501,7 @@ async function initInsightsPage() {
       h("div", { class: "auth-prompt-actions" }, [
         h("a", {
           class: "btn btn-primary",
-          href: "http://localhost:8000/login",
+          href: `${API_BASE_URL}/login`,
           text: "Log in",
         }),
       ]),
@@ -542,7 +544,7 @@ async function initInsightsPage() {
       h("div", { class: "auth-prompt-actions" }, [
         h("a", {
           class: "btn btn-primary",
-          href: "http://localhost:8000/calendar/connect",
+          href: `${API_BASE_URL}/calendar/connect`,
           text: "Connect Calendar",
         }),
       ]),

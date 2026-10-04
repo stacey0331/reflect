@@ -1,6 +1,6 @@
 # Reflect
 
-Reflect is a lightweight journaling app for capturing daily notes and turning them into reflection over time. The app is intentionally simple and calm: write, save, browse recent entries, and revisit them later for editing or deletion.
+A journaling app for capturing daily notes and turning them into meaningful insights over time. Think of it as a friend that knows you well—helping you become more aware of how you spend your time, understand your moods, and gain potential insights for navigating life.
 
 ## What is built now
 
@@ -32,39 +32,52 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2) Start PostgreSQL
+### 2) Configure local environment variables
+
+Create or edit:
 
 ```bash
-docker compose up -d # bring it back without destroying the data
-docker compose exec db psql -U user -d mydatabase
+backend/.env.local
 ```
 
-### 3) Configure the Gemini API key
-
-Create or edit the local env file:
-
 ```bash
-# backend/.env.local
-export GEMINI_API_KEY="your-real-api-key"
-export FRONTEND_URL="http://localhost:5500"
-export GOOGLE_REDIRECT_URI="http://localhost:8000/callback"
+GEMINI_API_KEY="your-real-api-key"
+FRONTEND_URL="http://localhost:5500"
+GOOGLE_REDIRECT_URI="http://localhost:8000/callback"
 ```
 
-Then load it before starting the backend:
+> Do not commit the real API key to Git. Keep `backend/.env.local` untracked.
+
+### 3) Start the backend and PostgreSQL
+
+Docker Compose starts both the FastAPI backend and PostgreSQL:
 
 ```bash
-source .venv/bin/activate
-source backend/.env.local
-uvicorn backend.api:app --reload
+docker compose up --build
+```
+
+To run them in the background:
+
+```bash
+docker compose up --build -d
 ```
 
 The API will be available at:
 
-- http://localhost:8000/api/journal
+* http://localhost:8000
+* http://localhost:8000/docs
 
-> Do not commit the real key to Git. Keep the local env file untracked.
+PostgreSQL data is persisted in the `db-data` Docker volume, so stopping the containers does not delete the database.
+
+To stop the containers:
+
+```bash
+docker compose down
+```
 
 ### 4) Run the frontend
+
+In a separate terminal:
 
 ```bash
 cd frontend
@@ -73,7 +86,8 @@ python3 -m http.server 5500
 
 Then open:
 
-- http://localhost:5500
+* http://localhost:5500
+
 
 ## API contract
 
