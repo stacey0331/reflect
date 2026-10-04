@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, ForeignKey
 from datetime import date as Date, datetime
 
 ## Pydantic
@@ -96,10 +96,20 @@ class InsightResponse(BaseModel):
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    google_id: Mapped[str] = mapped_column(unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     date: Mapped[Date]
     content: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(
@@ -110,6 +120,7 @@ class Insight(Base):
     __tablename__ = "insights"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     period_type: Mapped[str]
     period_label: Mapped[str]
     date_range: Mapped[str]
@@ -126,6 +137,7 @@ class ImportantEvent(Base):
     __tablename__ = "important_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     title: Mapped[str]
     category: Mapped[str]
     summary: Mapped[str]

@@ -726,6 +726,50 @@ ul {
   border-color: #e7a3bf;
 }
 
+.auth-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  background: rgba(207, 230, 255, 0.45);
+  border-left: 4px solid var(--baby-deep);
+}
+
+.auth-prompt-copy h3 {
+  margin-bottom: 5px;
+  font-size: 0.875rem;
+}
+
+.auth-prompt-copy p {
+  color: var(--ink-soft);
+}
+
+.auth-prompt-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.insights-auth-prompt .btn-primary {
+  min-width: 128px;
+}
+
+.auth-prompt-journal-link {
+  color: var(--ink);
+  font-family: var(--font-pixel);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .auth-prompt {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* --------------------------------------------------------------------------
    Entry page
    -------------------------------------------------------------------------- */

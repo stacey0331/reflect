@@ -64,6 +64,16 @@ const isThisYear = (iso) => new Date(iso).getFullYear() === new Date().getFullYe
 
 const wordCount = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
+async function fetchAuthStatus() {
+  if (api.USE_MOCK) return { authenticated: true };
+
+  const response = await fetch("http://localhost:8000/auth/status", {
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error(`Auth status failed (${response.status})`);
+  return response.json();
+}
+
 function preview(text, max = 160) {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? flat.slice(0, max).trimEnd() + "…" : flat;
@@ -125,11 +135,7 @@ function renderSidebar(section) {
 
   async function hydrateAuthState() {
     try {
-      const response = await fetch("http://localhost:8000/auth/status", {
-        credentials: "include",
-      });
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await fetchAuthStatus();
       if (!data.authenticated) return;
 
       const accountMenu = h("details", { class: "sidebar-account" });
@@ -188,6 +194,7 @@ function initJournalPage() {
   let allEntries = [];
   let showAll = false;
   let selectedDate = "";
+  let authenticated = api.USE_MOCK;
 
   // Live date / time indicator
   function tick() {
@@ -206,7 +213,11 @@ function initJournalPage() {
   function updateComposer() {
     const words = wordCount(textarea.value);
     countEl.textContent = `${words} ${words === 1 ? "word" : "words"}`;
-    saveBtn.disabled = textarea.value.trim() === "";
+    textarea.disabled = !authenticated;
+    textarea.placeholder = authenticated
+      ? "What happened today?"
+      : "Sign in to write a journal entry";
+    saveBtn.disabled = !authenticated || textarea.value.trim() === "";
   }
   textarea.addEventListener("input", updateComposer);
   updateComposer();
@@ -226,6 +237,12 @@ function initJournalPage() {
       renderList();
       showStatus("Entry saved");
     } catch (error) {
+      if (error instanceof Error && error.message.includes("401")) {
+        authenticated = false;
+        updateComposer();
+        renderSignInPrompt();
+        return;
+      }
       const rawMessage = error instanceof Error ? error.message : String(error ?? "");
       const lowerMessage = rawMessage.toLowerCase();
       const isDuplicateDayError = lowerMessage.includes("already exists")
@@ -238,13 +255,20 @@ function initJournalPage() {
       showStatus(message, true);
     } finally {
       updateComposer();
-      saveBtn.disabled = false;
     }
   });
 
   // Recent entries -> GET /api/journal (see api.listEntries)
   async function loadEntries() {
     try {
+      const auth = await fetchAuthStatus();
+      authenticated = Boolean(auth.authenticated);
+      updateComposer();
+      if (!authenticated) {
+        renderSignInPrompt();
+        return;
+      }
+
       // The backend returns everything, newest first. The UI shows the latest 5
       // and lets you expand to the full list, so there's no separate History page.
       // TODO(backend): if the list gets long, add pagination (e.g. ?limit= and
@@ -256,11 +280,27 @@ function initJournalPage() {
       listEl.replaceChildren(
         h("li", {
           class: "empty error",
-          text: "Couldn't load your entries. Check that the backend is running, or set USE_MOCK = true in js/api.js.",
+          text: "Your journal couldn't load. Check your connection and try again.",
         })
       );
       moreRow.hidden = true;
     }
+  }
+
+  function renderSignInPrompt() {
+    const prompt = h("li", { class: "auth-prompt" }, [
+      h("div", { class: "auth-prompt-copy" }, [
+        h("h3", { text: "Your journal is waiting" }),
+        h("p", { text: "Sign in to see your saved entries and write a new one." }),
+      ]),
+      h("a", {
+        class: "btn btn-primary",
+        href: "http://localhost:8000/login",
+        text: "Sign in",
+      }),
+    ]);
+    listEl.replaceChildren(prompt);
+    moreRow.hidden = true;
   }
 
   function renderList() {
@@ -441,6 +481,49 @@ async function initEntryPage() {
 // Renders PLACEHOLDER data from api.getInsights(). See mock-data.js.
 
 async function initInsightsPage() {
+  const insightsGrid = document.querySelector(".insights-grid");
+
+  function renderSignInPrompt(title, description) {
+    insightsGrid.hidden = true;
+    document.querySelector(".lede").textContent = description;
+
+    const prompt = h("section", {
+      class: "auth-prompt insights-auth-prompt",
+      "aria-labelledby": "insights-signin-heading",
+    }, [
+      h("div", { class: "auth-prompt-copy" }, [
+        h("h2", { id: "insights-signin-heading", text: title }),
+        h("p", { text: "Sign in and write a few journal entries. Reflect can then look for recurring themes and patterns across your week, month, and year." }),
+      ]),
+      h("div", { class: "auth-prompt-actions" }, [
+        h("a", {
+          class: "btn btn-primary",
+          href: "http://localhost:8000/login",
+          text: "Log in",
+        }),
+      ]),
+    ]);
+    insightsGrid.before(prompt);
+  }
+
+  try {
+    const auth = await fetchAuthStatus();
+    if (!auth.authenticated) {
+      renderSignInPrompt(
+        "Start with a journal entry",
+        ""
+      );
+      return;
+    }
+  } catch (error) {
+    console.error(error);
+    renderSignInPrompt(
+      "Insights are temporarily unavailable",
+      "Reflect couldn't check your sign-in or load your insights. Check that the backend is running, then try again."
+    );
+    return;
+  }
+
   const response = await api.getInsights();
   const weekly = response?.weekly || response;
   const monthly = response?.monthly || null;

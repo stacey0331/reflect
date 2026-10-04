@@ -15,6 +15,7 @@ from google.genai import types
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from sqlalchemy.exc import IntegrityError
 from starlette.middleware.sessions import SessionMiddleware
 
 from .models import (
@@ -25,6 +26,7 @@ from .models import (
     JournalEntryUpdate,
     Insight,
     InsightResponse,
+    User,
 )
 from .event_patterns import EVENT_PATTERNS
 from .database import SessionLocal
@@ -91,6 +93,40 @@ def get_db():
         db.close()
 
 
+def get_or_create_user(db, google_id: str) -> User:
+    user = db.query(User).filter(User.google_id == google_id).first()
+    if user is not None:
+        return user
+
+    is_first_user = db.query(User.id).first() is None
+    user = User(google_id=google_id)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        user = db.query(User).filter(User.google_id == google_id).first()
+        if user is None:
+            raise
+        return user
+
+    db.refresh(user)
+    if is_first_user:
+        db.query(JournalEntry).filter(JournalEntry.user_id.is_(None)).update(
+            {JournalEntry.user_id: user.id}, synchronize_session=False
+        )
+        db.commit()
+    return user
+
+
+def get_current_user_id(request: Request) -> int:
+    user = request.session.get("user")
+    user_id = user.get("id") if user else None
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=401, detail="Please log in to continue.")
+    return user_id
+
+
 def _serialize_journal_entry(entry: JournalEntry):
     if entry is None:
         return None
@@ -118,7 +154,7 @@ def login(request: Request):
 
 
 @app.get("/callback")
-def callback(request: Request):
+def callback(request: Request, db=Depends(get_db)):
     state = request.session.get("oauth_state")
     if not state:
         raise HTTPException(status_code=400, detail="Invalid session or missing state token.")
@@ -148,11 +184,17 @@ def callback(request: Request):
         raise HTTPException(status_code=400, detail="Failed to retrieve user profile from Google.")
 
     user_info = user_info_resp.json()
+    google_id = user_info.get("sub") or user_info.get("id")
+    if not google_id:
+        raise HTTPException(status_code=400, detail="Google account ID was not returned.")
+
+    account = get_or_create_user(db, google_id)
     granted_scopes = credentials.scopes or []
     has_calendar_access = CALENDAR_SCOPE in granted_scopes
 
     request.session["user"] = {
-        "id": user_info.get("id"),
+        "id": account.id,
+        "google_id": google_id,
         "email": user_info.get("email"),
         "name": user_info.get("name"),
         "picture": user_info.get("picture"),
@@ -249,10 +291,15 @@ def logout(request: Request):
 
 @app.post("/api/journal")
 def create_journal_entry(
+    request: Request,
     entry: JournalEntryCreate,
     db = Depends(get_db)
 ):
-    existing_entry = db.query(JournalEntry).filter(JournalEntry.date == entry.date).first()
+    user_id = get_current_user_id(request)
+    existing_entry = db.query(JournalEntry).filter(
+        JournalEntry.user_id == user_id,
+        JournalEntry.date == entry.date,
+    ).first()
     if existing_entry:
         raise HTTPException(
             status_code=400,
@@ -260,6 +307,7 @@ def create_journal_entry(
         )
 
     db_entry = JournalEntry(
+        user_id=user_id,
         date=entry.date,
         content=entry.content,
         created_at=datetime.now(timezone.utc),
@@ -280,31 +328,50 @@ def create_journal_entry(
 
 @app.get("/api/journal")
 def get_journal_entries(
+    request: Request,
     db = Depends(get_db)
 ):
-    return [_serialize_journal_entry(entry) for entry in db.query(JournalEntry).order_by(JournalEntry.created_at.desc()).all()]
+    user_id = get_current_user_id(request)
+    entries = db.query(JournalEntry).filter(
+        JournalEntry.user_id == user_id
+    ).order_by(JournalEntry.created_at.desc()).all()
+    return [_serialize_journal_entry(entry) for entry in entries]
 
 
 @app.get("/api/journal/{id}")
 def get_journal_entry(
     id: int,
+    request: Request,
     db = Depends(get_db)
 ):
-    return _serialize_journal_entry(db.query(JournalEntry).filter(JournalEntry.id == id).first())
+    user_id = get_current_user_id(request)
+    entry = db.query(JournalEntry).filter(
+        JournalEntry.id == id,
+        JournalEntry.user_id == user_id,
+    ).first()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    return _serialize_journal_entry(entry)
 
 
 @app.put("/api/journal/{id}")
 def update_journal_entry(
     id: int,
+    request: Request,
     entry: JournalEntryUpdate,
     db = Depends(get_db)
 ):
-    db_entry = db.query(JournalEntry).filter(JournalEntry.id == id).first()
-    if db_entry:
-        db_entry.date = entry.date
-        db_entry.content = entry.content
-        db.commit()
-        db.refresh(db_entry)
+    user_id = get_current_user_id(request)
+    db_entry = db.query(JournalEntry).filter(
+        JournalEntry.id == id,
+        JournalEntry.user_id == user_id,
+    ).first()
+    if db_entry is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    db_entry.date = entry.date
+    db_entry.content = entry.content
+    db.commit()
+    db.refresh(db_entry)
     try:
         _upsert_event_candidate_from_entry(db, db_entry)
     except Exception:
@@ -317,22 +384,30 @@ def update_journal_entry(
 @app.delete("/api/journal/{id}")
 def delete_journal_entry(
     id: int,
+    request: Request,
     db = Depends(get_db)
 ):
-    db_entry = db.query(JournalEntry).filter(JournalEntry.id == id).first()
-    if db_entry:
-        db.delete(db_entry)
-        db.commit()
+    user_id = get_current_user_id(request)
+    db_entry = db.query(JournalEntry).filter(
+        JournalEntry.id == id,
+        JournalEntry.user_id == user_id,
+    ).first()
+    if db_entry is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    db.delete(db_entry)
+    db.commit()
     return {"message": "Entry deleted"}
 
 @app.get("/api/insights")
 def get_insights(
+    request: Request,
     db = Depends(get_db)
 ):
+    user_id = get_current_user_id(request)
     return {
-        "weekly": _get_or_create_period_insight(db, "weekly"),
-        "monthly": _get_or_create_period_insight(db, "monthly"),
-        "yearly": _get_or_create_period_insight(db, "yearly"),
+        "weekly": _get_or_create_period_insight(db, "weekly", user_id),
+        "monthly": _get_or_create_period_insight(db, "monthly", user_id),
+        "yearly": _get_or_create_period_insight(db, "yearly", user_id),
     }
 
 
@@ -365,13 +440,14 @@ def _empty_insight(period_type, period_label, start_date, end_date):
     }
 
 
-def _get_or_create_period_insight(db, period_type):
+def _get_or_create_period_insight(db, period_type, user_id):
     if period_type == "weekly":
         start_date, end_date = _get_last_completed_week_window()
         label = _get_week_label_for_date(start_date)
         return _get_or_create_insight_for_range(
             db,
             period_type="weekly",
+            user_id=user_id,
             period_label=label,
             start_date=start_date,
             end_date=end_date,
@@ -393,6 +469,7 @@ def _get_or_create_period_insight(db, period_type):
             return _get_or_create_insight_for_range(
                 db,
                 period_type="monthly",
+                user_id=user_id,
                 period_label=month_label,
                 start_date=start_date,
                 end_date=end_date,
@@ -401,6 +478,7 @@ def _get_or_create_period_insight(db, period_type):
         return _get_or_create_insight_for_range(
             db,
             period_type="monthly",
+            user_id=user_id,
             period_label=month_label,
             start_date=start_date,
             end_date=end_date,
@@ -416,6 +494,7 @@ def _get_or_create_period_insight(db, period_type):
             return _get_or_create_insight_for_range(
                 db,
                 period_type="yearly",
+                user_id=user_id,
                 period_label=str(last_year),
                 start_date=start_date,
                 end_date=end_date,
@@ -424,6 +503,7 @@ def _get_or_create_period_insight(db, period_type):
         return _get_or_create_insight_for_range(
             db,
             period_type="yearly",
+            user_id=user_id,
             period_label=year_label,
             start_date=start_date,
             end_date=end_date,
@@ -432,9 +512,10 @@ def _get_or_create_period_insight(db, period_type):
     return None
 
 
-def _get_or_create_insight_for_range(db, period_type, period_label, start_date, end_date):
+def _get_or_create_insight_for_range(db, period_type, period_label, start_date, end_date, user_id):
     existing = (
         db.query(Insight)
+        .filter(Insight.user_id == user_id)
         .filter(Insight.period_type == period_type)
         .filter(Insight.period_label == period_label)
         .order_by(Insight.created_at.desc())
@@ -445,7 +526,7 @@ def _get_or_create_insight_for_range(db, period_type, period_label, start_date, 
         return _serialize_insight_row(existing)
 
     logger.info("No stored %s insight for %s; generating insight", period_type, period_label)
-    return _generate_insight_for_range(db, period_type, period_label, start_date, end_date)
+    return _generate_insight_for_range(db, period_type, period_label, start_date, end_date, user_id)
 
 
 def _signal_strength_for_text(text: str) -> tuple[str | None, int, str]:
@@ -464,9 +545,10 @@ def _signal_strength_for_text(text: str) -> tuple[str | None, int, str]:
     return category, score, normalized
 
 
-def _already_has_similar_event(db, category: str, event_date: date, summary: str) -> bool:
+def _already_has_similar_event(db, user_id: int, category: str, event_date: date, summary: str) -> bool:
     existing = (
         db.query(ImportantEvent)
+        .filter(ImportantEvent.user_id == user_id)
         .filter(ImportantEvent.category == category)
         .filter(ImportantEvent.is_active.is_(True))
         .all()
@@ -495,17 +577,21 @@ def _upsert_event_candidate_from_entry(db, entry: JournalEntry):
     if len(summary) > 220:
         summary = summary[:217].rstrip() + "..."
 
-    if _already_has_similar_event(db, category, entry.date, summary):
+    if _already_has_similar_event(db, entry.user_id, category, entry.date, summary):
         logger.info("Skipping duplicate important event candidate for %s on %s", category, entry.date.isoformat())
         return None
 
-    existing_count = db.query(ImportantEvent).filter(ImportantEvent.is_active.is_(True)).count()
+    existing_count = db.query(ImportantEvent).filter(
+        ImportantEvent.user_id == entry.user_id,
+        ImportantEvent.is_active.is_(True),
+    ).count()
     if existing_count >= 10:
         logger.info("Important event cap reached; skipping new event candidate for %s", category)
         return None
 
     title = category.replace("_", " ").title()
     db_event = ImportantEvent(
+        user_id=entry.user_id,
         title=title,
         category=category,
         summary=summary,
@@ -524,9 +610,10 @@ def _upsert_event_candidate_from_entry(db, entry: JournalEntry):
     return db_event
 
 
-def _detect_important_events(db, limit=10):
+def _detect_important_events(db, user_id, limit=10):
     active_events = (
         db.query(ImportantEvent)
+        .filter(ImportantEvent.user_id == user_id)
         .filter(ImportantEvent.is_active.is_(True))
         .order_by(ImportantEvent.event_date.desc())
         .limit(limit)
@@ -535,8 +622,8 @@ def _detect_important_events(db, limit=10):
     return active_events[:limit]
 
 
-def _get_life_context_text(db):
-    events = _detect_important_events(db, limit=10)
+def _get_life_context_text(db, user_id):
+    events = _detect_important_events(db, user_id, limit=10)
     if not events:
         return "No active important life events detected."
 
@@ -547,9 +634,10 @@ def _get_life_context_text(db):
     return "\n".join(formatted)
 
 
-def _generate_insight_for_range(db, period_type, period_label, start_date, end_date):
+def _generate_insight_for_range(db, period_type, period_label, start_date, end_date, user_id):
     range_entries = (
         db.query(JournalEntry)
+        .filter(JournalEntry.user_id == user_id)
         .filter(JournalEntry.date >= start_date)
         .filter(JournalEntry.date <= end_date)
         .order_by(JournalEntry.date.desc())
@@ -568,6 +656,7 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     previous_start_date, previous_end_date = _get_previous_period_window(period_type, start_date, end_date)
     previous_entries = (
         db.query(JournalEntry)
+        .filter(JournalEntry.user_id == user_id)
         .filter(JournalEntry.date >= previous_start_date)
         .filter(JournalEntry.date <= previous_end_date)
         .order_by(JournalEntry.date.desc())
@@ -578,7 +667,7 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
         for entry in previous_entries
     )
     has_previous_data = bool(previous_entries)
-    life_context_text = _get_life_context_text(db)
+    life_context_text = _get_life_context_text(db, user_id)
 
     if period_type == "weekly":
         period_label_description = "week"
@@ -693,6 +782,7 @@ def _generate_insight_for_range(db, period_type, period_label, start_date, end_d
     insight.dateRange = f"{start_date.isoformat()} to {end_date.isoformat()}"
 
     db_insight = Insight(
+        user_id=user_id,
         period_type=period_type,
         period_label=period_label,
         date_range=insight.dateRange,
