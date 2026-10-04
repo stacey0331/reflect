@@ -4,8 +4,19 @@ import os
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
-from fastapi import Depends, FastAPI, HTTPException
+from typing import Optional
+
+import requests
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from google import genai
+from google.genai import types
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from starlette.middleware.sessions import SessionMiddleware
+
 from .models import (
     ImportantEvent,
     ImportantEventCreate,
@@ -18,8 +29,8 @@ from .models import (
 from .event_patterns import EVENT_PATTERNS
 from .database import SessionLocal
 from .logging_config import logger
-from google import genai
-from google.genai import types
+
+os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
@@ -36,12 +47,41 @@ INSIGHT_MODELS = (
 app = FastAPI()
 
 app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET_KEY", "reflect-dev-secret-change-me"),
+)
+
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5500"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+CLIENT_SECRETS_FILE = os.environ.get(
+    "GOOGLE_CLIENT_SECRETS_FILE",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "credentials.json"),
+)
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/callback")
+GOOGLE_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/calendar.readonly",
+]
+CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+
+
+def get_google_flow(state: Optional[str] = None) -> Flow:
+    return Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+        state=state,
+    )
+
 
 def get_db():
     db = SessionLocal()
@@ -61,6 +101,150 @@ def _serialize_journal_entry(entry: JournalEntry):
         "created_at": entry.created_at.isoformat() if isinstance(entry.created_at, datetime) else entry.created_at,
         "updated_at": entry.updated_at.isoformat() if hasattr(entry, "updated_at") and entry.updated_at is not None and isinstance(entry.updated_at, datetime) else None,
     }
+
+
+@app.get("/login")
+def login(request: Request):
+    flow = get_google_flow()
+    authorization_url, state = flow.authorization_url(
+        prompt="consent",
+        access_type="offline",
+        include_granted_scopes="true",
+        code_challenge_method="S256",
+    )
+    request.session["oauth_state"] = state
+    request.session["oauth_code_verifier"] = flow.code_verifier
+    return RedirectResponse(authorization_url)
+
+
+@app.get("/callback")
+def callback(request: Request):
+    state = request.session.get("oauth_state")
+    if not state:
+        raise HTTPException(status_code=400, detail="Invalid session or missing state token.")
+
+    flow = get_google_flow(state=state)
+    code_verifier = request.session.get("oauth_code_verifier")
+    if code_verifier:
+        flow.code_verifier = code_verifier
+
+    try:
+        flow.fetch_token(authorization_response=str(request.url))
+    except Exception as exc:
+        logger.exception("Google OAuth token exchange failed for callback request.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Google OAuth exchange failed: {exc}",
+        ) from exc
+
+    credentials = flow.credentials
+
+    user_info_resp = requests.get(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        headers={"Authorization": f"Bearer {credentials.token}"},
+        timeout=15,
+    )
+    if not user_info_resp.ok:
+        raise HTTPException(status_code=400, detail="Failed to retrieve user profile from Google.")
+
+    user_info = user_info_resp.json()
+    granted_scopes = credentials.scopes or []
+    has_calendar_access = CALENDAR_SCOPE in granted_scopes
+
+    request.session["user"] = {
+        "id": user_info.get("id"),
+        "email": user_info.get("email"),
+        "name": user_info.get("name"),
+        "picture": user_info.get("picture"),
+        "has_calendar_access": has_calendar_access,
+    }
+    request.session["credentials"] = {
+        "token": credentials.token,
+        "refresh_token": credentials.refresh_token,
+        "token_uri": credentials.token_uri,
+        "client_id": credentials.client_id,
+        "client_secret": credentials.client_secret,
+        "scopes": credentials.scopes,
+    }
+
+    return RedirectResponse(url_for_dashboard(has_calendar_access))
+
+
+def url_for_dashboard(has_calendar_access: bool) -> str:
+    status = "calendar_connected" if has_calendar_access else "logged_in_no_calendar"
+    return f"{FRONTEND_BASE_URL}/index.html?status={status}"
+
+
+@app.get("/dashboard")
+def dashboard(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse("/login")
+    return {
+        "message": f"Welcome, {user['name']}!",
+        "user_email": user["email"],
+        "calendar_connected": user["has_calendar_access"],
+        "instructions": (
+            "Visit /calendar to see events"
+            if user["has_calendar_access"]
+            else "User declined calendar access during login. Visit /login to grant calendar permission."
+        ),
+    }
+
+
+@app.get("/calendar")
+def read_calendar(request: Request):
+    user = request.session.get("user")
+    creds_data = request.session.get("credentials")
+
+    if not user or not creds_data:
+        return RedirectResponse("/login")
+
+    if not user.get("has_calendar_access"):
+        raise HTTPException(
+            status_code=403,
+            detail="Calendar access was not granted by the user. Please re-authenticate at /login.",
+        )
+
+    creds = Credentials(**creds_data)
+    service = build("calendar", "v3", credentials=creds)
+    time_min = (
+        datetime.now(timezone.utc) - timedelta(days=30)
+    ).isoformat().replace("+00:00", "Z")
+
+    events_result = service.events().list(
+        calendarId="primary",
+        timeMin=time_min,
+        maxResults=100,
+        singleEvents=True,
+        orderBy="startTime",
+    ).execute()
+    events = events_result.get("items", [])
+    return {
+        "account": user["email"],
+        "event_count": len(events),
+        "events": events,
+    }
+
+
+@app.get("/auth/status")
+def auth_status(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return {"authenticated": False}
+    return {
+        "authenticated": True,
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "picture": user.get("picture"),
+        "has_calendar_access": user.get("has_calendar_access", False),
+    }
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(FRONTEND_BASE_URL, status_code=303)
 
 
 @app.post("/api/journal")

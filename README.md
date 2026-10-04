@@ -46,6 +46,8 @@ Create or edit the local env file:
 ```bash
 # backend/.env.local
 export GEMINI_API_KEY="your-real-api-key"
+export FRONTEND_URL="http://localhost:5500"
+export GOOGLE_REDIRECT_URI="http://localhost:8000/callback"
 ```
 
 Then load it before starting the backend:

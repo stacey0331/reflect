@@ -261,8 +261,99 @@ ul {
     2px 0 0 0 var(--edge);
 }
 
-.sidebar-note {
+.sidebar-auth-wrap {
   margin-top: auto;
+}
+
+.sidebar-auth {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.sidebar-account {
+  position: relative;
+}
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 2px 8px;
+  padding: 10px 12px;
+  border: 2px solid var(--edge-blue);
+  background: var(--white);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  box-shadow: 0 -2px 0 0 var(--lav-mid), 0 2px 0 0 var(--lav-mid), -2px 0 0 0 var(--lav-mid), 2px 0 0 0 var(--lav-mid);
+}
+
+.sidebar-profile::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-account:hover .sidebar-logout,
+.sidebar-account:focus-within .sidebar-logout,
+.sidebar-account[open] .sidebar-logout {
+  display: block;
+}
+
+.sidebar-logout {
+  display: none;
+  position: absolute;
+  right: -2px;
+  bottom: calc(100% + 8px);
+  left: 2px;
+  padding: 9px 12px;
+  border: 2px solid var(--edge-blue);
+  background: var(--white);
+  color: var(--rose-text);
+  font-family: var(--font-pixel);
+  text-decoration: none;
+  box-shadow: 0 -2px 0 0 var(--lav-mid), 0 2px 0 0 var(--lav-mid), -2px 0 0 0 var(--lav-mid), 2px 0 0 0 var(--lav-mid);
+}
+
+.sidebar-logout:hover,
+.sidebar-logout:focus-visible {
+  background: #fff2f7;
+}
+
+.sidebar-profile img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--baby);
+  border: 2px solid var(--lav-mid);
+}
+
+.sidebar-profile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-profile-text strong,
+.sidebar-profile-text span {
+  font-family: var(--font-pixel);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-profile-text strong {
+  font-size: 0.75rem;
+}
+
+.sidebar-profile-text span {
+  font-size: 0.625rem;
+  color: var(--ink-soft);
+}
+
+.sidebar-note {
+  margin-top: 0;
   padding: 0 8px;
   font-family: var(--font-pixel);
   font-size: 0.75rem;

@@ -99,17 +99,75 @@ function renderSidebar(section) {
     nav.append(a);
   }
 
-  sidebar.append(brand, nav);
-
-  // Honest reminder while the backend doesn't exist yet
-  if (api.USE_MOCK) {
-    sidebar.append(
-      h("p", {
+  const authWrap = h("div", { class: "sidebar-auth-wrap" });
+  const note = api.USE_MOCK
+    ? h("p", {
         class: "sidebar-note",
         text: "Demo mode. Entries are saved in this browser only.",
       })
-    );
+    : h("p", {
+        class: "sidebar-note",
+        text: "",
+      });
+
+  const loginLink = h(
+    "a",
+    {
+      class: "btn btn-primary sidebar-auth",
+      href: "http://localhost:8000/login",
+      target: "_self",
+      text: "Google login",
+    }
+  );
+
+  authWrap.append(loginLink);
+  sidebar.append(brand, nav, note, authWrap);
+
+  async function hydrateAuthState() {
+    try {
+      const response = await fetch("http://localhost:8000/auth/status", {
+        credentials: "include",
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!data.authenticated) return;
+
+      const accountMenu = h("details", { class: "sidebar-account" });
+      const profileCard = h("summary", {
+        class: "sidebar-profile",
+        title: data.name || data.email || "Google account",
+      });
+
+      const avatar = h("img", {
+        alt: "Google profile picture",
+        src: data.picture || "",
+        referrerpolicy: "no-referrer",
+      });
+
+      const text = h("div", { class: "sidebar-profile-text" }, [
+        h("strong", { text: data.name || "Google user" }),
+        h("span", { text: data.email || "Connected" }),
+      ]);
+
+      profileCard.append(avatar, text);
+      accountMenu.append(
+        profileCard,
+        h("a", {
+          class: "sidebar-logout",
+          href: "http://localhost:8000/logout",
+          text: "Log out",
+        })
+      );
+      authWrap.replaceChildren(accountMenu);
+      document.addEventListener("click", (event) => {
+        if (!accountMenu.contains(event.target)) accountMenu.open = false;
+      });
+    } catch (error) {
+      console.debug("Auth state unavailable", error);
+    }
   }
+
+  hydrateAuthState();
 }
 
 // ---- Journal page (index.html) ----------------------------------------------
