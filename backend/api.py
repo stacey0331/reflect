@@ -51,11 +51,17 @@ app = FastAPI()
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET_KEY", "reflect-dev-secret-change-me"),
+    session_cookie="__session",
+    same_site="none",
+    https_only=True,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5500"],
+    allow_origins=[
+        "http://localhost:5500",
+        "https://gen-lang-client-0157398024.web.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,8 +71,8 @@ CLIENT_SECRETS_FILE = os.environ.get(
     "GOOGLE_CLIENT_SECRETS_FILE",
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "credentials.json"),
 )
-FRONTEND_BASE_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
-GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/callback")
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_URL", "https://gen-lang-client-0157398024.web.app",)
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "https://gen-lang-client-0157398024.web.app/callback",)
 LOGIN_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -198,7 +204,7 @@ def callback(request: Request, db=Depends(get_db)):
         flow.code_verifier = code_verifier
 
     try:
-        flow.fetch_token(authorization_response=str(request.url))
+        flow.fetch_token(code=request.query_params["code"])
     except Exception as exc:
         logger.exception("Google OAuth token exchange failed for callback request.")
         raise HTTPException(

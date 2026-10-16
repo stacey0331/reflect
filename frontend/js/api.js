@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { mockApi, MOCK_INSIGHTS } from "./mock-data.js";
+import { API_BASE } from "./config.js";
 
 // -----------------------------------------------------------------------------
 // flip this to false once your FastAPI server is running.
@@ -29,7 +30,6 @@ export const USE_MOCK = false;
 //     Use the full URL below and add CORSMiddleware to FastAPI.
 //   - Frontend served BY FastAPI (StaticFiles)? Use "/api" (same origin).
 // -----------------------------------------------------------------------------
-const API_BASE = "http://localhost:8000/api";
 
 // Small fetch wrapper: JSON in, JSON out, throws on any non-2xx response.
 async function request(path, options = {}) {

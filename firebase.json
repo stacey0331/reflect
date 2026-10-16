@@ -1,0 +1,54 @@
+{
+  "hosting": {
+    "public": "frontend",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      },
+      {
+        "source": "/auth/**",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      },
+      {
+        "source": "/login",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      },
+      {
+        "source": "/logout",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      },
+      {
+        "source": "/callback",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      },
+      {
+        "source": "/calendar/**",
+        "run": {
+          "serviceId": "reflect-api",
+          "region": "asia-east1"
+        }
+      }
+    ]
+  }
+}

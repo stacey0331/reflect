@@ -20,7 +20,7 @@ The app is not yet a full AI reflection system, but the journal CRUD flow is in 
 - Backend: FastAPI
 - Database: PostgreSQL
 - ORM: SQLAlchemy
-- Local dev DB: Docker Compose
+- Local PostgreSQL: Docker Compose
 
 ## Local setup
 
@@ -89,56 +89,43 @@ Then open:
 * http://localhost:5500
 
 
-## API contract
-
-The frontend expects these endpoints:
-
-```text
-GET    /api/journal
-POST   /api/journal
-GET    /api/journal/{id}
-PUT    /api/journal/{id}
-DELETE /api/journal/{id}
+## Dpeloyement
+### Create PostgreSQL instance
+```
+gcloud sql instances create reflect-db \
+  --database-version=POSTGRES_16 \
+  --region=asia-east1 \
+  --tier=db-f1-micro
 ```
 
-### Example payloads
-
-Create an entry:
-
-```json
-{
-  "date": "2026-09-25",
-  "content": "Today I felt more focused after morning planning."
-}
+### Backend
+```
+gcloud run deploy reflect-api \
+  --source . \
+  --region asia-east1 \
+  --allow-unauthenticated \
+  --port 8000 \
+  --min 0 \
+  --max 2
 ```
 
-Update an entry:
-
-```json
-{
-  "date": "2026-09-25",
-  "content": "Updated reflection: I felt more focused after morning planning."
-}
+### Frontend
+```
+firebase deploy --only hosting
 ```
 
-The journal list is sorted newest-first by `created_at`.
 
 ## Current status
 
 This app currently supports:
 
-- writing new entries
-- listing recent entries in descending order
-- opening a single entry
-- editing an entry
-- deleting an entry
+- writing/editing/deleting/viewing entries
+- user log in
+- the "insight" page
 
-The insights page is still mocked, and the AI/reflection features are still future work.
 
 ## Next ideas
-
-- real AI-powered theme extraction and weekly reflection
+- i really want to spend a lot of time on making the AI smarter
 - better journal search and filtering
-- user auth
 - deeper insights dashboard and analytics endpoints
-- deployment setup and production config
+- better deployment
