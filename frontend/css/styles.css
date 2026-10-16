@@ -265,6 +265,10 @@ ul {
   margin-top: auto;
 }
 
+.sidebar-auth-wrap.auth-pending {
+  visibility: hidden;
+}
+
 .sidebar-auth {
   width: 100%;
   margin-bottom: 8px;

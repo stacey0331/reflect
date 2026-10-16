@@ -111,7 +111,10 @@ function renderSidebar(section) {
     nav.append(a);
   }
 
-  const authWrap = h("div", { class: "sidebar-auth-wrap" });
+  const authWrap = h("div", {
+    class: "sidebar-auth-wrap auth-pending",
+    "aria-busy": "true",
+  });
   const note = api.USE_MOCK
     ? h("p", {
         class: "sidebar-note",
@@ -172,6 +175,9 @@ function renderSidebar(section) {
       });
     } catch (error) {
       console.debug("Auth state unavailable", error);
+    } finally {
+      authWrap.classList.remove("auth-pending");
+      authWrap.removeAttribute("aria-busy");
     }
   }
 
