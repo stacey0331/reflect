@@ -2,18 +2,6 @@
 
 A journaling app for capturing daily notes and turning them into meaningful insights over time. Think of it as a friend that knows you well—helping you become more aware of how you spend your time, understand your moods, and gain potential insights for navigating life.
 
-## What is built now
-
-This repo currently includes:
-
-- a static journaling frontend in [frontend](frontend)
-- a FastAPI backend in [backend](backend)
-- a PostgreSQL database configured with Docker in [compose.yaml](compose.yaml)
-- SQLAlchemy models and a simple journal API
-- a mock analytics/insights experience for the placeholder dashboard
-
-The app is not yet a full AI reflection system, but the journal CRUD flow is in place and the frontend is wired to the backend API.
-
 ## Tech stack
 
 - Frontend: plain HTML, CSS, JavaScript
@@ -21,6 +9,7 @@ The app is not yet a full AI reflection system, but the journal CRUD flow is in 
 - Database: PostgreSQL
 - ORM: SQLAlchemy
 - Local PostgreSQL: Docker Compose
+- Deployment: GCP Cloud Run, Firebase
 
 ## Local setup
 
@@ -125,7 +114,7 @@ This app currently supports:
 
 
 ## Next ideas
-- i really want to spend a lot of time on making the AI smarter
-- better journal search and filtering
-- deeper insights dashboard and analytics endpoints
-- better deployment
+- i really want to spend a lot more time on making the AI smarter
+- make the app more scalable by accommodating many requests at the same time. 
+- better UX. currently things don't load right away for some reason. also would like to add more features like search and filtering
+
