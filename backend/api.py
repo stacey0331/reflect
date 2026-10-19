@@ -1,5 +1,6 @@
 import calendar
 import json
+import math
 import os
 import re
 import time
@@ -748,6 +749,93 @@ def _get_life_context_text(db, user_id):
     return "\n".join(formatted)
 
 
+def _rank_similar_entries(entries, entry_embeddings, query_embeddings, limit=5, min_similarity=0.69):
+    ranked = []
+    for entry, entry_embedding in zip(entries, entry_embeddings):
+        if not entry_embedding:
+            continue
+
+        entry_norm = math.sqrt(sum(value * value for value in entry_embedding))
+        if not entry_norm:
+            continue
+
+        best_similarity = 0.0
+        for query_embedding in query_embeddings:
+            if len(query_embedding) != len(entry_embedding):
+                continue
+            query_norm = math.sqrt(sum(value * value for value in query_embedding))
+            if not query_norm:
+                continue
+            similarity = sum(
+                left * right for left, right in zip(entry_embedding, query_embedding)
+            ) / (entry_norm * query_norm)
+            best_similarity = max(best_similarity, similarity)
+
+        if best_similarity >= min_similarity:
+            ranked.append((entry, best_similarity))
+            logger.info(
+                "Found similar journal entry %s with similarity %.3f",
+                entry.id,
+                best_similarity,
+            )
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    return ranked[:limit]
+
+
+def _retrieve_similar_journal_entries(
+    db, user_id, current_entries, before_date, limit=5, min_similarity=0.35
+):
+    candidates = (
+        db.query(JournalEntry)
+        .filter(JournalEntry.user_id == user_id)
+        .filter(JournalEntry.date < before_date)
+        .order_by(JournalEntry.date.desc())
+        .limit(80)
+        .all()
+    )
+    if not candidates or not current_entries:
+        return []
+
+    query_texts = [
+        f"Journal entry from {entry.date.isoformat()}: {entry.content[:6000]}"
+        for entry in current_entries
+    ]
+    candidate_texts = [
+        f"Journal entry from {entry.date.isoformat()}: {entry.content[:6000]}"
+        for entry in candidates
+    ]
+
+    try:
+        query_response = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=query_texts,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+        )
+        candidate_response = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=candidate_texts,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+        )
+        query_embeddings = [embedding.values for embedding in query_response.embeddings]
+        candidate_embeddings = [
+            embedding.values for embedding in candidate_response.embeddings
+        ]
+        return [
+            entry
+            for entry, _score in _rank_similar_entries(
+                candidates,
+                candidate_embeddings,
+                query_embeddings,
+                limit=limit,
+                min_similarity=min_similarity,
+            )
+        ]
+    except Exception as exc:  # pragma: no cover - provider behavior
+        logger.warning("Could not retrieve similar journal entries: %s", exc)
+        return []
+
+
 def _generate_insight_for_range(
     db, period_type, period_label, start_date, end_date, user_id,
     calendar_credentials=None, calendar_included=False,
@@ -784,6 +872,21 @@ def _generate_insight_for_range(
         for entry in previous_entries
     )
     has_previous_data = bool(previous_entries)
+    relevant_past_entries = (
+        _retrieve_similar_journal_entries(
+            db,
+            user_id,
+            range_entries,
+            previous_start_date,
+        )
+        if period_type == "weekly"
+        else []
+    )
+    relevant_past_entries_text = "\n\n".join(
+        f"{entry.date.isoformat()}: {entry.content}"
+        for entry in relevant_past_entries
+    )
+    logger.info('relevant_past_entries_text: ' + relevant_past_entries_text)
     life_context_text = _get_life_context_text(db, user_id)
     calendar_context = (
         _get_calendar_context(calendar_credentials, start_date, end_date)
@@ -846,8 +949,6 @@ def _generate_insight_for_range(
     or "Compared with the previous 3 months, this month felt calmer and more focused."
     or "Compared with last year, this year feels more fragmented and slower to recover."
     If hasPreviousData is false, do not mention a comparison at all. Write a normal summary of the period without comparing against a prior window.
-    After the comparison sentence or the normal summary, add 1 thoughtful question that arises from the period.
-    These should be open-ended, specific to the journal entries, and designed to help the user reflect rather than to give advice.
 
     ## Themes
     The main recurring ideas or topics in the journal entries.
@@ -867,6 +968,9 @@ def _generate_insight_for_range(
 
     Previous period journal entries (only if available):
     {previous_entries_text if has_previous_data else 'No previous period data available.'}
+
+    Relevant older journal entries retrieved by semantic similarity (historical context only):
+    {relevant_past_entries_text if relevant_past_entries_text else 'No relevant older entries found.'}
     """
 
     logger.debug("Insight prompt for %s %s: %s", period_type, period_label, prompt)

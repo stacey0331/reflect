@@ -1,0 +1,205 @@
+{
+  "queries": [
+    {
+      "id": "work-evaluation-week",
+      "cutoff_date": "2026-09-21",
+      "text": "I dreaded speaking in front of my coworkers this week. My pulse sped up beforehand, and I kept imagining that I would embarrass myself.",
+      "candidates": [
+        {
+          "id": "evaluation-senior-staff",
+          "date": "2026-09-15",
+          "text": "Knowing the directors would assess my proposal made me practice every sentence late into the night.",
+          "relevant": true
+        },
+        {
+          "id": "interview-lost-train-thought",
+          "date": "2026-09-08",
+          "text": "During the hiring panel, I lost my train of thought and worried afterward that I had made a fool of myself.",
+          "relevant": true
+        },
+        {
+          "id": "town-hall-shaky-voice",
+          "date": "2026-08-30",
+          "text": "At the company gathering, my voice trembled when everyone turned toward me, even though I knew what I wanted to say.",
+          "relevant": true
+        },
+        {
+          "id": "gardening-tomatoes",
+          "date": "2026-09-18",
+          "text": "I spent a peaceful afternoon pruning the tomato plants and watering the herbs.",
+          "relevant": false
+        },
+        {
+          "id": "coworker-lunch",
+          "date": "2026-09-12",
+          "text": "I had lunch with two colleagues and enjoyed hearing about their weekend trips.",
+          "relevant": false
+        },
+        {
+          "id": "presentation-design",
+          "date": "2026-09-05",
+          "text": "I finally found a clean color palette for the slides and aligned all the charts before sending the deck.",
+          "relevant": false
+        },
+        {
+          "id": "fast-heart-after-run",
+          "date": "2026-08-27",
+          "text": "I ran up the hill by the reservoir and my heartbeat stayed high for several minutes afterward.",
+          "relevant": false
+        },
+        {
+          "id": "embarrassed-spilled-coffee",
+          "date": "2026-08-19",
+          "text": "I knocked over my mug in the kitchen and felt silly cleaning the mess while my roommate watched.",
+          "relevant": false
+        },
+        {
+          "id": "work-deadline-pressure",
+          "date": "2026-08-11",
+          "text": "The report deadline moved up, so I reorganized the week and finished the analysis before Friday.",
+          "relevant": false
+        },
+        {
+          "id": "public-speaking-class",
+          "date": "2026-08-02",
+          "text": "I signed up for a community storytelling class because I want to learn how to hold an audience's attention.",
+          "relevant": false
+        }
+      ]
+    },
+    {
+      "id": "new-city-belonging-week",
+      "cutoff_date": "2026-10-05",
+      "text": "Even after several weeks in this city, I still feel like an outsider. Weekends are especially hard because I have nobody nearby to call or make plans with.",
+      "candidates": [
+        {
+          "id": "unfamiliar-neighborhood-weekend",
+          "date": "2026-10-01",
+          "text": "Saturday dragged on. I walked around streets I don't recognize and wished I had someone here to share an ordinary day with.",
+          "relevant": true
+        },
+        {
+          "id": "dinner-alone-new-place",
+          "date": "2026-09-26",
+          "text": "I ate dinner by myself again and missed the easy company I used to have around the table back home.",
+          "relevant": true
+        },
+        {
+          "id": "no-familiar-faces",
+          "date": "2026-09-19",
+          "text": "The cafe was full of groups who seemed to know one another. I felt invisible and longed for a familiar face.",
+          "relevant": true
+        },
+        {
+          "id": "moving-boxes-organized",
+          "date": "2026-10-03",
+          "text": "I unpacked the last kitchen boxes, labeled the storage bins, and finally found a place for the winter coats.",
+          "relevant": false
+        },
+        {
+          "id": "city-bus-route",
+          "date": "2026-09-30",
+          "text": "I figured out which bus gets me to the office fastest and saved the route in my phone.",
+          "relevant": false
+        },
+        {
+          "id": "old-friend-birthday-call",
+          "date": "2026-09-24",
+          "text": "My friend from college called for my birthday. We laughed about our old apartment and caught up on work.",
+          "relevant": false
+        },
+        {
+          "id": "weekend-crowds-market",
+          "date": "2026-09-17",
+          "text": "The farmers market was packed, so I bought apples quickly and left before the afternoon rush.",
+          "relevant": false
+        },
+        {
+          "id": "new-job-first-week",
+          "date": "2026-09-10",
+          "text": "My new role has a steep learning curve, but the team explained the tools and I finished my first assignment.",
+          "relevant": false
+        },
+        {
+          "id": "home-sick-with-cold",
+          "date": "2026-09-03",
+          "text": "I stayed home with a sore throat, drank ginger tea, and watched a documentary about deep-sea fish.",
+          "relevant": false
+        },
+        {
+          "id": "explored-city-museum",
+          "date": "2026-08-28",
+          "text": "I spent the afternoon at the design museum and found a tiny bookstore on the walk back.",
+          "relevant": false
+        }
+      ]
+    },
+    {
+      "id": "late-screen-low-energy-week",
+      "cutoff_date": "2026-10-19",
+      "text": "I stayed on my phone long after bedtime several nights. The next mornings I felt drained, foggy, and unusually short-tempered.",
+      "candidates": [
+        {
+          "id": "videos-until-two",
+          "date": "2026-10-15",
+          "text": "I kept watching short clips until almost 2 a.m. and could barely focus when the alarm rang.",
+          "relevant": true
+        },
+        {
+          "id": "refreshing-feeds-at-night",
+          "date": "2026-10-10",
+          "text": "I refreshed the news and social feeds in bed for ages; by breakfast I felt heavy-headed and impatient with everyone.",
+          "relevant": true
+        },
+        {
+          "id": "gaming-late-slow-morning",
+          "date": "2026-10-04",
+          "text": "One more game turned into several, and I dragged myself through the first half of the following day.",
+          "relevant": true
+        },
+        {
+          "id": "paperback-before-bed",
+          "date": "2026-10-17",
+          "text": "I read a few chapters of a paperback, put it down at ten, and woke up refreshed before my alarm.",
+          "relevant": false
+        },
+        {
+          "id": "flu-fatigue",
+          "date": "2026-10-13",
+          "text": "A fever and aching joints kept me in bed most of the day; I canceled my plans and drank plenty of water.",
+          "relevant": false
+        },
+        {
+          "id": "busy-morning-commute",
+          "date": "2026-10-08",
+          "text": "The train was delayed, and I arrived at the office annoyed after standing on the platform in the rain.",
+          "relevant": false
+        },
+        {
+          "id": "phone-camera-project",
+          "date": "2026-10-02",
+          "text": "I used my phone to photograph the changing leaves in the park and shared a few pictures with my sister.",
+          "relevant": false
+        },
+        {
+          "id": "afternoon-coffee",
+          "date": "2026-09-25",
+          "text": "I had a strong coffee after lunch and felt jittery during the afternoon planning meeting.",
+          "relevant": false
+        },
+        {
+          "id": "early-flight-tired",
+          "date": "2026-09-18",
+          "text": "The 5 a.m. flight meant getting up before dawn, but I slept well the previous night and napped after landing.",
+          "relevant": false
+        },
+        {
+          "id": "evening-yoga",
+          "date": "2026-09-11",
+          "text": "A gentle stretch class helped me unwind after work, and I was ready to turn in soon afterward.",
+          "relevant": false
+        }
+      ]
+    }
+  ]
+}

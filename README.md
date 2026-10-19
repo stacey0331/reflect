@@ -1,6 +1,9 @@
 # Reflect
 
-A journaling app for capturing daily notes and turning them into meaningful insights over time. Think of it as a friend that knows you well—helping you become more aware of how you spend your time, understand your moods, and gain potential insights for navigating life.
+An AI-powered journaling app that analyzes your entries to surface meaningful patterns and insights, helping you better understand and reflect on your life.
+
+## Why I Built Reflect
+This app solves a real problem I personally have. I believe journaling helps processing emotions, but sometimes I want to look back on what happened in my life during a certain period of time. I also want to check how I am doing lately compare to last month or year, and see if the way I spend my time is actually leading me to the life I'm trying to build. 
 
 ## Tech stack
 
@@ -64,6 +67,11 @@ To stop the containers:
 docker compose down
 ```
 
+To open a PostgreSQL shell: 
+```
+docker compose exec db sh -c 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
 ### 4) Run the frontend
 
 In a separate terminal:
@@ -76,6 +84,34 @@ python3 -m http.server 5500
 Then open:
 
 * http://localhost:5500
+
+### 5) Run unit test
+```
+python -m unittest tests.test_weekly_insight_retrieval -v
+python -m unittest tests.test_weekly_insight_retrieval_live -v
+```
+run all: 
+```
+python -m unittest discover -s tests -v
+```
+
+### Evaluate weekly RAG retrieval
+
+This live retrieval evaluation compares cosine-similarity thresholds using labeled query/candidate examples. It calls Gemini's embedding API. The example dataset is fictional; copy it to the git-ignored local dataset and replace it with labeled examples for a meaningful evaluation.
+
+Load the Gemini key from `backend/.env.local`, then run from the repository root:
+
+```bash
+set -a
+source backend/.env.local
+set +a
+python -m eval.evaluate_weekly_retrieval \
+  --dataset eval/dataset.example.json \
+  --thresholds 0.60,0.70,0.80,0.90,0.95,0.99
+```
+
+For a private dataset, first copy `eval/dataset.example.json` to `eval/dataset.local.json`, edit the examples and labels, and pass `--dataset eval/dataset.local.json`.
+
 
 
 ## Dpeloyement
